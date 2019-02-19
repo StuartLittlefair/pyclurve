@@ -237,6 +237,7 @@ if __name__ == "__main__":
                          'pulse_q', 'pulse_temp', 'pulse_amp'])
     params = np.array([25000, 9000, 0.40, 0.35, 89.4, 0.0193, 0.0186, 57460.6510218, 0.09986526542,
                        60.0, 10, 10000, 0.005])
+    ndim = len(params)
 
     model_bounds = dict(
         t1=(20000, 30000),
@@ -269,7 +270,6 @@ if __name__ == "__main__":
 
     if args.fit:
         nwalkers = args.nwalkers
-        ndim = len(params)
 
         def log_prior(params):
             model.set_parameter_vector(params)
