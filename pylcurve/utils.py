@@ -3,7 +3,7 @@ import numpy as np
 from astropy import units as u
 from astropy.constants import G
 
-from .limbdark import tables
+from .limbdark import interpolators
 
 
 def log_g(m, r):
@@ -44,10 +44,8 @@ def get_limbdark_params(t1, g1, t2, g2, band):
     Uses quadratic limb darkening law
     """
     pars = dict()
-    pars['ldc1_1'] = 0.46
-    pars['ldc1_2'] = 0.35
-    pars['ldc2_1'] = 0.48
-    pars['ldc2_2'] = 0.35
+    pars['ldc1_1'], pars['ldc1_2'] = interpolators[band](t1, g1)
+    pars['ldc2_1'], pars['ldc2_2'] = interpolators[band](t2, g2)
     return pars
 
 
