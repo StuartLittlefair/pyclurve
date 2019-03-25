@@ -10,7 +10,7 @@ Claret_interpolators = dict()
 for band in bands:
     filename = 'data/ld_coeffs_{}.txt'.format(band)
     # get installed locations
-    # filename = pkg_resources.resource_filename('pylcurve', filename)
+    filename = pkg_resources.resource_filename('pylcurve', filename)
     t = Table.read(filename, format='cds')
 
     # data to interpolate over
