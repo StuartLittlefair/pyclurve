@@ -48,9 +48,13 @@ def get_limbdark_params(t1, g1, t2, g2, band, law='claret'):
     if law == 'claret':
         pars['ldc1_1'], pars['ldc1_2'], pars['ldc1_3'], pars['ldc1_4'] = Claret_interpolators[band](t1,g1)
         pars['ldc2_1'], pars['ldc2_2'], pars['ldc2_3'], pars['ldc2_4'] = Claret_interpolators[band](t2,g2)
+        pars['limb1'] = 'Claret'
+        pars['limb2'] = 'Claret'
     elif law == 'quad':
         pars['ldc1_1'], pars['ldc1_2'] = interpolators[band](t1, g1)
         pars['ldc2_1'], pars['ldc2_2'] = interpolators[band](t2, g2)
+        pars['limb1'] = 'Poly'
+        pars['limb2'] = 'Poly'
     else:
         raise ValueError('unknown limb darkening law')
     return pars
