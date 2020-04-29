@@ -1,10 +1,58 @@
 import numpy as np
-
-from astropy import units as u
+import astropy.units as u
+from scipy.integrate import quad
 from astropy.constants import G
+from astropy.modeling.blackbody import blackbody_lambda, blackbody_nu
+from .blackbody import bb_interpolator
+from .limbdark import ld_interpolator
+from .massradius import mr_interpolator
+from .rochedistortion import roche_interpolator
+from dust_extinction.parameter_averages import F20
 
-from .limbdark import Quad_interpolators, Claret_interpolators
-from .blackbody import blackbody_interpolators
+
+def get_Tbb(teff, logg, band, instrument='ucam_sloan', star_type='WD', source='Bergeron'):
+    """
+    Interpolates Teff to Tbb tables for a given filter band
+    ('u', 'g', 'r', 'i', or 'z') for PHOENIX main-sequence
+    models (star_type='MS') or Bergeron & Gianninas white dwarf
+    models (star_type='WD').
+    """
+    if star_type == 'WD' and source == 'Claret':
+        T_bb = float(bb_interpolator['WD_Claret'][instrument][band](teff, logg))
+    elif star_type == 'WD' and source == 'Bergeron':
+        T_bb = float(bb_interpolator['WD_Bergeron'][instrument][band](teff, logg))
+    else:
+        T_bb = float(bb_interpolator[star_type][instrument][band](teff, logg))
+    return T_bb
+
+
+def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
+             teff_2=None, logg_2=None, star_type_2=None):
+    """
+    Interpolates Claret WD (star_type='WD') and PHOENIX MS (star_type='MS')
+    tables and returns a dictionary of limb-darkening coefficients for a given
+    filter band ('u', 'us', 'g', 'gs', 'r', 'rs', 'i', 'is', 'z', or 'zs').
+    """
+
+    ldcs = dict()
+
+    ldcs['ldc1_1'], ldcs['ldc1_2'], ldcs['ldc1_3'], ldcs['ldc1_4'] = (
+        ld_interpolator[star_type_1][band](teff_1, logg_1)
+    )
+    if star_type_2:
+        ldcs['ldc2_1'], ldcs['ldc2_2'], ldcs['ldc2_3'], ldcs['ldc2_4'] = (
+            ld_interpolator[star_type_2][band](teff_2, logg_2)
+        )
+    return ldcs
+
+
+def get_radius(mass, q, temp=None, star_type='He', relation='empirical', age_gyr=5):
+    if star_type=='He' or star_type=='CO':
+        radius = mr_interpolator[star_type](mass, temp)
+    elif star_type=='MS':
+        radius_va = mr_interpolator[star_type][relation](mass, age_gyr)
+        radius = roche_interpolator(q, radius_va)
+    return radius
 
 
 def log_g(m, r):
@@ -16,7 +64,6 @@ def log_g(m, r):
 def separation(m1, m2, p):
     """
     Calculation binary separation
-
     Parameters
     -----------
     m1 : float
@@ -25,7 +72,6 @@ def separation(m1, m2, p):
         mass of star 2 in solar units
     p : float
         period in days
-
     Returns
     -------
     a : float
@@ -38,28 +84,25 @@ def separation(m1, m2, p):
     return a.to_value(u.R_sun)
 
 
-def get_limbdark_params(t1, g1, t2, g2, band, law='claret'):
-    """
-    Interpolates Gianninas table and returns limb-darkened params.
-
-    Uses quadratic limb darkening law
-    """
-    pars = dict()
-    if law == 'claret':
-        pars['ldc1_1'], pars['ldc1_2'], pars['ldc1_3'], pars['ldc1_4'] = Claret_interpolators[band](t1,g1)
-        pars['ldc2_1'], pars['ldc2_2'], pars['ldc2_3'], pars['ldc2_4'] = Claret_interpolators[band](t2,g2)
-        pars['limb1'] = 'Claret'
-        pars['limb2'] = 'Claret'
-    elif law == 'quad':
-        pars['ldc1_1'], pars['ldc1_2'] = interpolators[band](t1, g1)
-        pars['ldc2_1'], pars['ldc2_2'] = interpolators[band](t2, g2)
-        pars['limb1'] = 'Poly'
-        pars['limb2'] = 'Poly'
-    else:
-        raise ValueError('unknown limb darkening law')
-    return pars
+def Claret_LD_law(mu, c1, c2, c3, c4):
+    I = (1 - c1*(1 - mu**0.5) - c2*(1 - mu) - c3*(1 - mu**1.5) - c4*(1 - mu**2)) * mu
+    return I
 
 
-def wd_to_bb_temp(band, t, logg):
-    t_bb = blackbody_interpolators[band](t, logg)
-    return t_bb
+def m1m2(vel_scale, q, P):
+    vel_scale = vel_scale * (u.km / u.s)
+    P = P * u.d
+    m1 = ((P * vel_scale**3) / (2 * np.pi * G * (1 + q**-1))).to_value(u.M_sun)
+    m2 = ((P * vel_scale**3) / (2 * np.pi * G * (1 + q))).to_value(u.M_sun)
+    return m1, m2
+
+
+def scalefactor(a, parallax, wavelength, Av=0):
+    a = a * u.R_sun
+    # parallax (mas) to distance (parsecs)
+    d = ((1000 / parallax) * u.parsec).to(u.R_sun)
+    # lcurve flux is in W/m^2/separation^2 -> correct to Janskys
+    # and account for reddening
+    ext = F20(Rv=3.1)
+    sf = (a**2 / d**2) * ext.extinguish(wavelength, Av)
+    return sf * 10**26
