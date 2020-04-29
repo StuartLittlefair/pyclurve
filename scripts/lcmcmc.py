@@ -186,6 +186,11 @@ class EclipseLC(Model):
         self.set_parameter_vector(params)
         t, _, y, ye, _, _ = np.loadtxt(self.lightcurves[band]).T
 
+        # check model params are valid - checks against bounds
+        lp = self.log_prior()
+        if not np.isfinite(lp):
+            return -np.inf
+
         # make a GP for this band, if it doesnt already exist
         if not hasattr(self, 'gpdict'):
             self.gpdict = dict()
@@ -209,9 +214,11 @@ class EclipseLC(Model):
             ))
             gp.compute(t, ye)
 
-        lp = gp.log_prior() + self.log_prior()
+        # now add prior of Gaussian process
+        lp += gp.log_prior()
         if not np.isfinite(lp):
             return -np.inf
+
         try:
             ym = self.get_value(band)
         except ValueError as err:
@@ -233,7 +240,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     nameList = np.array(['t1', 't2', 'm1', 'm2', 'incl',
-                         'r1', 'r2', 't0', 'per, pulse_omega',
+                         'r1', 'r2', 't0', 'per', 'pulse_omega',
                          'pulse_q', 'pulse_temp', 'pulse_amp'])
     params = np.array([25000, 9000, 0.40, 0.35, 89.4, 0.0193, 0.0186, 57460.6510218, 0.09986526542,
                        60.0, 10, 10000, 0.005])
