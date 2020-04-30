@@ -46,16 +46,29 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
     return ldcs
 
 
-def get_radius(mass, q, temp=None, star_type='He', relation='empirical', age_gyr=5):
+def get_radius(mass, temp=None, star_type='He', relation='empirical', age_gyr=5):
     if star_type=='He' or star_type=='CO':
         radius = mr_interpolator[star_type](mass, temp)
     elif star_type=='MS':
-        radius_va = mr_interpolator[star_type][relation](mass, age_gyr)
-        radius = roche_interpolator(q, radius_va)
+        if relation=='empirical':
+            radius = mr_interpolator[star_type][relation](mass)
+        else:
+            radius = mr_interpolator[star_type][relation](mass, age_gyr)
     return radius
 
 
+def Rva_to_Rl1(q, r_VA__a):
+    """
+    Correct scaled volume-averaged radius to roche distorted radius towards L1.
+    """
+    r_L1_a = roche_interpolator(q, r_VA)
+    return r_L1_a
+
+
 def log_g(m, r):
+    """
+    Calculate log(g) [cgs] given Mass and Radius in solar units.
+    """
     m = m*u.M_sun
     r = r*u.R_sun
     return np.log10((G*m/r/r).to_value(u.cm/u.s/u.s))
@@ -85,6 +98,9 @@ def separation(m1, m2, p):
 
 
 def Claret_LD_law(mu, c1, c2, c3, c4):
+    """
+    Claret 4-parameter limb-darkening law.
+    """
     I = (1 - c1*(1 - mu**0.5) - c2*(1 - mu) - c3*(1 - mu**1.5) - c4*(1 - mu**2)) * mu
     return I
 
@@ -97,12 +113,18 @@ def m1m2(vel_scale, q, P):
     return m1, m2
 
 
-def scalefactor(a, parallax, wavelength, Av=0):
+def scalefactor(a, parallax, wavelength=550*u.nm, Av=0):
+    """
+    Calculates an Lcurve scalefactor for use with flux calibrated data given
+    an orbital separation and parallax, taking reddening into account.
+    For data with flux units of Janskys.
+    """
     a = a * u.R_sun
     # parallax (mas) to distance (parsecs)
     d = ((1000 / parallax) * u.parsec).to(u.R_sun)
     # lcurve flux is in W/m^2/separation^2 -> correct to Janskys
     # and account for reddening
     ext = F20(Rv=3.1)
-    sf = (a**2 / d**2) * ext.extinguish(wavelength, Av)
+    extinction_fac = ext.extinguish(wavelength, Av)
+    sf = (a**2 / d**2) * extinction_fac
     return sf * 10**26

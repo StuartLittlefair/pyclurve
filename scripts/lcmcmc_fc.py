@@ -63,7 +63,7 @@ class EclipseLC(Model):
         self.r1 = utils.get_radius(self.m1, q, self.t1, star_type='CO')
         self.r2 = utils.get_radius(self.m2, q, self.t2, star_type='MS')
         log_g1 = utils.log_g(self.m1, self.r1)
-        log_g2 = utils.log_g(self.m2, self.r2)
+        log_g2 = utils.log_g(self.m2, self.r2) # not right
         a = utils.separation(self.m1, self.m2, self.per)
         ebv = 0.05
         Av = 3.1 * ebv
@@ -72,7 +72,7 @@ class EclipseLC(Model):
                                           source='Bergeron')
         lcurve_pars['t2'] = utils.get_Tbb(self.t2, log_g2, band, star_type='MS')
         lcurve_pars['r1'] = self.r1/a  # scale to separation units
-        lcurve_pars['r2'] = self.r2/a  # scale to separation units
+        lcurve_pars['r2'] = utils.Rva_to_Rl1(q, self.r2/a)  # scale and correct
         lcurve_pars['t0'] = self.t0
         lcurve_pars['period'] = self.per
         lcurve_pars['iangle'] = self.incl
