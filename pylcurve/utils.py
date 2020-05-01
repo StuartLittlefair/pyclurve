@@ -10,7 +10,8 @@ from .rochedistortion import roche_interpolator
 from dust_extinction.parameter_averages import F20
 
 
-def get_Tbb(teff, logg, band, instrument='ucam_sloan', star_type='WD', source='Bergeron'):
+def get_Tbb(teff, logg, band, instrument='ucam_sloan',
+            star_type='WD', source='Bergeron'):
     """
     Interpolates Teff to Tbb tables for a given filter band
     ('u', 'g', 'r', 'i', or 'z') for PHOENIX main-sequence
@@ -46,7 +47,13 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
     return ldcs
 
 
-def get_radius(mass, temp=None, star_type='He', relation='empirical', age_gyr=5):
+def get_radius(mass, temp=None, star_type='CO',
+               relation='empirical', age_gyr=5):
+    """
+    Interpolates mass-radius relations for WDs (CO-core('CO') or He-core('He'))
+    and for M-dwarfs ('empirical' or 'baraffe'). For baraffe, tracks of
+    different ages can be selected.
+    """
     if star_type=='He' or star_type=='CO':
         radius = mr_interpolator[star_type](mass, temp)
     elif star_type=='MS':
@@ -59,7 +66,8 @@ def get_radius(mass, temp=None, star_type='He', relation='empirical', age_gyr=5)
 
 def Rva_to_Rl1(q, r_VA__a):
     """
-    Correct scaled volume-averaged radius to roche distorted radius towards L1.
+    Correct scaled volume-averaged radius to roche distorted radius towards L1
+    given the mass ratio (M2/M1).
     """
     r_L1_a = roche_interpolator(q, r_VA)
     return r_L1_a

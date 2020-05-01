@@ -13,14 +13,29 @@ import pylcurve.utils as utils
 from pylcurve.filters import filters
 
 
-ucam_sloan = filters('ucam_sloan')
+"""
+This script fits flux calibrated, multi-band primary eclipse photometry of
+WD-WD/WD-dM binaries using an MCMC method to run Tom Marsh's LROCHE routine.
+Using mass-radius relations it can determine stellar masses and effective
+temperatures for both components.
+
+All typical user modified variables are denoted by "ENTER" for ease.
+"""
+
+
+# ENTER filter system of observations
+
+# cam = filters('sdss') ## SDSS throughputs
+cam = filters('ucam_sloan') ## ULTRACAM throughputs with standard sloan filters
+# cam = filters('ucam') ## ULTRACAM throughputs with super filters
+# cam = filters('hcam') ## HiPERCAM throughputs with super filters
 
 
 class EclipseLC(Model):
     parameter_names = ('t1', 't2', 'm1', 'm2', 'incl', 't0', 'per', 'parallax')
     def __init__(self, model_file, lightcurves, *args, **kwargs):
         """
-        A lightcurve model for an eclipsing WD-WD/WD-dM
+        A lightcurve model for an eclipsing WD-WD/WD-dM.
 
         Parameters
         ----------
@@ -33,7 +48,6 @@ class EclipseLC(Model):
         t1, t2 :  white dwarf/M-dwarf temp in K
         m1, m2 : white dwarf/M-dwarf masses in solar masses
         incl : inclination of system
-        r1, r2 : white dwarf//M-dwarf radii in solar radii
         t0 : mid-eclipse time of primary eclipse
         per : orbital period of system
         parallax : parallax of system
@@ -60,14 +74,20 @@ class EclipseLC(Model):
         lcurve_model = Lcurve(self.model_file)
         lcurve_pars = dict()
         q = self.m2/self.m1
-        self.r1 = utils.get_radius(self.m1, q, self.t1, star_type='CO')
-        self.r2 = utils.get_radius(self.m2, q, self.t2, star_type='MS')
+
+        # ENTER chosen mass-radius relations for both stars
+        self.r1 = utils.get_radius(self.m1, self.t1, star_type='CO')
+        self.r2 = utils.get_radius(self.m2, self.t2, star_type='MS')
+
         log_g1 = utils.log_g(self.m1, self.r1)
-        log_g2 = utils.log_g(self.m2, self.r2) # not right
+        log_g2 = utils.log_g(self.m2, self.r2)
         a = utils.separation(self.m1, self.m2, self.per)
+
+        # ENTER interstellar redenning/extinction
         ebv = 0.05
         Av = 3.1 * ebv
-        scale_factor = utils.scalefactor(a, self.parallax, Av, ucam_sloan.eff_wl[band])
+
+        scale_factor = utils.scalefactor(a, self.parallax, Av, cam.eff_wl[band])
         lcurve_pars['t1'] = utils.get_Tbb(self.t1, log_g1, band, star_type='WD',
                                           source='Bergeron')
         lcurve_pars['t2'] = utils.get_Tbb(self.t2, log_g2, band, star_type='MS')
@@ -77,7 +97,7 @@ class EclipseLC(Model):
         lcurve_pars['period'] = self.per
         lcurve_pars['iangle'] = self.incl
         lcurve_pars['q'] = q
-        lcurve_pars['wavelength'] = ucam_sloan.eff_wl[band].to_value(u.nm)
+        lcurve_pars['wavelength'] = cam.eff_wl[band].to_value(u.nm)
         lcurve_pars['phase1'] = np.arcsin(lcurve_pars['r1'] - lcurve_pars['r2']) / (2 * np.pi)
         lcurve_pars['phase2'] = 0.5 - lcurve_pars['phase1']
         lcurve_model.set(utils.get_ldcs(self.t1, logg_1=log_g1, band=band,
@@ -98,21 +118,15 @@ class EclipseLC(Model):
         if np.isinf(val):
             return val
 
-        # q_prior = m.Prior('gauss', 0.207, 0.006)
-        # q_act = self.m2/self.m1
-        # val += q_prior.ln_prob(q_act)
-
-        # (m1 + m2) * sini**3 = (P/2piG) * (v1+v2)**3
-        # mt_prior = m.Prior('gauss', 0.646, 0.02)
-        # val += mt_prior.ln_prob((self.m1 + self.m2) * np.sin(self.incl)**3)
-
-        # prior on parallax from Gaia (NN Ser)
+        # ENTER prior on parallax from Gaia (NN Ser)
         par_prior = m.Prior('gaussPos', 1.9166, 0.0980)
         val += par_prior.ln_prob(self.parallax)
         
+        # ENTER prior on T0
         prior = m.Prior('gauss', 55307.400302182999, 1.3524578e-06)
         val += prior.ln_prob(self.t0)
 
+        # ENTER prior on period
         prior = m.Prior('gauss', 0.13008017141, 0.00000000017)
         val += prior.ln_prob(self.per)
 
@@ -187,13 +201,16 @@ if __name__ == "__main__":
     parser.add_argument('--nthreads', action='store', type=int, default=1)
     args = parser.parse_args()
 
-###############################################################################
+    ###########################################################################
 
     nameList = np.array(['t1', 't2', 'm1', 'm2', 'incl', 't0', 'per', 'parallax'])
+    
+    # ENTER starting parameters (in same order as namelist)
     params = np.array([57000, 3300, 0.535, 0.111, 89.6, 55307.400302182999,
                        0.13008017141, 1.9166])
     ndim = len(params)
 
+    # ENTER model limits
     model_bounds = dict(
         t1=(5000, 80000),
         t2=(2300, 6900),
@@ -204,16 +221,18 @@ if __name__ == "__main__":
         per=(0.13007967141, 0.13008067141),
         parallax=(1, 3)
     )
-
+    # ENTER light curve data
     lc_path = 'light_curves/'
     light_curves = dict(
         u=lc_path + 'NN_Ser_ucam_sloan_uband_cut_fc.dat',
         g=lc_path + 'NN_Ser_ucam_sloan_gband_cut_fc.dat',
         i=lc_path + 'NN_Ser_ucam_sloan_iband_cut_fc.dat',
     )
+    # ENTER lcurve model filename
+    model_file = 'model'
 
     ###########################################################################
-    model = EclipseLC('model', light_curves, *params, bounds=model_bounds)
+    model = EclipseLC(model_file, light_curves, *params, bounds=model_bounds)
 
     # wrapper to combine log probability from all bands
     def log_probability(params):

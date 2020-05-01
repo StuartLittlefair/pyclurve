@@ -156,7 +156,6 @@ class Lcurve(OrderedDict):
         Run lroche, return output and name of model.
         """
         data = str(data)
-        scale_factor = str(scale_factor)
         if not os.path.isfile(data):
             raise Exception(data + ' does not appear to be a file')
 
