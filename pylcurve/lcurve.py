@@ -167,8 +167,8 @@ class Lcurve(OrderedDict):
         # build the command, run it, read the results.
         if scale_factor:
             args = (lroche, 'model=' + tfile, 'data=' + data, 'noise=0',
-                    'scale=no', 'ssfac={}', 'seed=12345', 'nfile=1',
-                    'output={}'.format(scale_factor, fname), 'device=null',
+                    'scale=no', 'ssfac={}'.format(scale_factor), 'seed=12345', 'nfile=1',
+                    'output={}'.format(fname), 'device=null',
                     'nodefs')
         else:
             args = (lroche, 'model=' + tfile, 'data=' + data, 'noise=0',
@@ -275,10 +275,10 @@ class Lcurve(OrderedDict):
         use_radii = (self['use_radii'][0] == '1')
         for (key, value) in self.items():
             if len(value) > 1 and value[3] == '1':
-                if (use_radii and (key == 'r1' or key == 'r2'))
-                   or (not use_radii and (key == 'cphi3' or key == 'cphi4')) \
+                if ((use_radii and (key == 'r1' or key == 'r2'))
+                   or (not use_radii and (key == 'cphi3' or key == 'cphi4'))
                    or (key != 'r1' and key != 'r2'
-                       and key != 'cphi3' and key != 'cphi4'):
+                       and key != 'cphi3' and key != 'cphi4')):
                     vpar[key] = float(value[0])
 
         return vpar
@@ -292,10 +292,10 @@ class Lcurve(OrderedDict):
         use_radii = (self['use_radii'][0] == '1')
         for (key, value) in self.items():
             if len(value) > 1 and value[3] == '1':
-                if (use_radii and (key == 'r1' or key == 'r2'))
-                   or (not use_radii and (key == 'cphi3' or key == 'cphi4')) \
+                if ((use_radii and (key == 'r1' or key == 'r2'))
+                   or (not use_radii and (key == 'cphi3' or key == 'cphi4'))
                    or (key != 'r1' and key != 'r2'
-                       and key != 'cphi3' and key != 'cphi4'):
+                       and key != 'cphi3' and key != 'cphi4')):
                     vnam.append(key)
 
         return vnam
@@ -309,9 +309,9 @@ class Lcurve(OrderedDict):
         use_radii = (self['use_radii'][0] == '1')
         for (key, value) in self.items():
             if len(value) > 1 and value[3] == '1':
-                if (use_radii and (key == 'r1' or key == 'r2'))
-                   or (not use_radii and (key == 'cphi3' or key == 'cphi4')) \
+                if ((use_radii and (key == 'r1' or key == 'r2'))
+                   or (not use_radii and (key == 'cphi3' or key == 'cphi4'))
                    or (key != 'r1' and key != 'r2'
-                       and key != 'cphi3' and key != 'cphi4'):
+                       and key != 'cphi3' and key != 'cphi4')):
                     nvar += 1
         return nvar

@@ -21,7 +21,7 @@ def get_Tbb(teff, logg, band, instrument='ucam_sloan',
     if star_type == 'WD' and source == 'Claret':
         T_bb = float(bb_interpolator['WD_Claret'][instrument][band](teff, logg))
     elif star_type == 'WD' and source == 'Bergeron':
-        T_bb = float(bb_interpolator['WD_Bergeron'][instrument][band](teff, logg))
+        T_bb = float(bb_interpolator['WD'][instrument][band](teff, logg))
     else:
         T_bb = float(bb_interpolator[star_type][instrument][band](teff, logg))
     return T_bb
@@ -64,12 +64,12 @@ def get_radius(mass, temp=None, star_type='CO',
     return radius
 
 
-def Rva_to_Rl1(q, r_VA__a):
+def Rva_to_Rl1(q, r_VA_a):
     """
     Correct scaled volume-averaged radius to roche distorted radius towards L1
     given the mass ratio (M2/M1).
     """
-    r_L1_a = roche_interpolator(q, r_VA)
+    r_L1_a = roche_interpolator(q, r_VA_a)
     return r_L1_a
 
 

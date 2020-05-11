@@ -17,34 +17,40 @@ class Prior(object):
     '''a class to represent a prior on a parameter, which makes calculating
     prior log-probability easier.
 
-    Priors can be of five types: gauss, gaussPos, uniform, log_uniform and mod_jeff
+    Priors can be of five types: gauss, gaussPos, uniform, log_uniform and
+    mod_jeff
 
     gauss is a Gaussian distribution, and is useful for parameters with
     existing constraints in the literature
     gaussPos is like gauss but enforces positivity
     Gaussian priors are initialised as Prior('gauss',mean,stdDev)
 
-    uniform is a uniform prior, initialised like Prior('uniform',low_limit,high_limit)
-    uniform priors are useful because they are 'uninformative'
+    uniform is a uniform prior, initialised like
+    Prior('uniform',low_limit,high_limit).
+    Uniform priors are useful because they are 'uninformative'
 
-    log_uniform priors have constant probability in log-space. They are the uninformative prior
-    for 'scale-factors', such as error bars (look up Jeffreys prior for more info)
+    log_uniform priors have constant probability in log-space. They are the
+    uninformative prior for 'scale-factors', such as error bars
+    (look up Jeffreys prior for more info)
 
     mod_jeff is a modified jeffries prior - see Gregory et al 2007
-    they are useful when you have a large uncertainty in the parameter value, so
-    a jeffreys prior is appropriate, but the range of allowed values starts at 0
+    they are useful when you have a large uncertainty in the parameter value,
+    so a jeffreys prior is appropriate, but the range of allowed values
+    starts at 0
 
     they have two parameters, p0 and pmax.
     they act as a jeffrey's prior about p0, and uniform below p0. typically
     set p0=noise level
     '''
     def __init__(self, type, p1, p2):
-        assert type in ['gauss', 'gaussPos', 'uniform', 'log_uniform', 'mod_jeff', 'log_normal']
+        assert type in ['gauss', 'gaussPos', 'uniform', 'log_uniform',
+                        'mod_jeff', 'log_normal']
         self.type = type
         self.p1 = p1
         self.p2 = p2
         if type == 'log_uniform' and self.p1 < 1.0e-30:
-            warnings.warn('lower limit on log_uniform prior rescaled from %f to 1.0e-30' % self.p1)
+            warnings.warn('lower limit on log_uniform prior rescaled from %f'
+                          + ' to 1.0e-30' % self.p1)
             self.p1 = 1.0e-30
         if type == 'log_uniform':
             self.normalise = 1.0
@@ -61,12 +67,14 @@ class Prior(object):
                 return TINY
         elif self.type == 'log_normal':
             if val < 1.0e-30:
-                warnings.warn('evaluating log_normal prior on val %f. Rescaling to 1.0e-30' % val)
+                warnings.warn('evaluating log_normal prior on val %f. '
+                              + 'Rescaling to 1.0e-30''' % val)
                 val = 1.0e-30
             log_val = np.log10(val)
             p = stats.norm(scale=self.p2, loc=self.p1).pdf(log_val)
             if p > 0:
-                return np.log(stats.norm(scale=self.p2, loc=self.p1).pdf(log_val))
+                return np.log(stats.norm(scale=self.p2,
+                                         loc=self.p1).pdf(log_val))
             else:
                 return TINY
         elif self.type == 'gaussPos':
@@ -121,8 +129,8 @@ def initialise_walkers(p, scatter, nwalkers, ln_prior):
         number of emcee walkers (i.e semi-independent MCMC chains)
     ln_prior : callable
         A function to evaluate prior probability for each parameter. Accepts a
-        single argument which must be the same form as p and returns a float, or
-        -np.inf if the parameter combination violates the priors.
+        single argument which must be the same form as p and returns a float,
+        or -np.inf if the parameter combination violates the priors.
 
     Returns
     -------
@@ -148,21 +156,23 @@ def initialise_walkers(p, scatter, nwalkers, ln_prior):
         # Create replacement values from valid walkers
         replacements = p0[isValid][replacement_rows]
         # Add scatter to replacement values
-        replacements += 0.5*replacements*scatter*np.random.normal(size=replacements.shape)
+        replacements += (0.5 * replacements * scatter
+                         * np.random.normal(size=replacements.shape))
         # Replace invalid walkers with new values
         p0[~isValid] = replacements
         numInvalid = len(p0[~isValid])
     return p0
 
 
-def run_burnin(sampler, startPos, nSteps, storechain=False, progress=True):
+def run_burnin(sampler, startPos, nSteps, store=False, progress=True):
     """
     Runs burn-in phase of MCMC, with options to store the chain or show progress bar
     """
     iStep = 0
     if progress:
         bar = tqdm(total=nSteps)
-    for pos, prob, state in sampler.sample(startPos, iterations=nSteps, storechain=storechain):
+    for pos, prob, state in sampler.sample(startPos, iterations=nSteps,
+                                           store=store):
         iStep += 1
         if progress:
             bar.update()
@@ -181,7 +191,7 @@ def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, **kwar
     if progress:
         bar = tqdm(total=nSteps)
     for pos, prob, state in sampler.sample(startPos, iterations=nSteps,
-                                           rstate0=rState, storechain=True, **kwargs):
+                                           rstate0=rState, store=True, **kwargs):
         if file:
             f = open(file, "a")
         iStep += 1
@@ -192,7 +202,8 @@ def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, **kwar
             thisPos = pos[k]
             thisProb = prob[k]
             if file:
-                f.write("{0:4d} {1:s} {2:f}\n".format(k, " ".join(map(str, thisPos)), thisProb))
+                f.write("{0:4d} {1:s} {2:f}\n".format(k, " ".join(map(str, thisPos)),
+                                                      thisProb))
         if file:
             f.close()
     return sampler
@@ -210,7 +221,8 @@ def flatchain(chain, npars, nskip=0, thin=1):
 
 
 def readchain(file, nskip=0, thin=1):
-    data = pd.read_csv(file, header=None, compression=None, delim_whitespace=True)
+    data = pd.read_csv(file, header=None, compression=None,
+                       delim_whitespace=True)
     data = np.array(data)
     nwalkers = int(data[:, 0].max()+1)
     nprod = int(data.shape[0]/nwalkers)
@@ -220,7 +232,8 @@ def readchain(file, nskip=0, thin=1):
 
 
 def readflatchain(file):
-    data = pd.read_csv(file, header=None, compression=None, delim_whitespace=True)
+    data = pd.read_csv(file, header=None, compression=None,
+                       delim_whitespace=True)
     data = np.array(data)
     return data
 
@@ -252,7 +265,8 @@ def GR_diagnostic(sampler_chain):
         between = sum((psi_j_dot - psi_dot_dot)**2) / (m - 1)
 
         # Calculate within-chain variance
-        inner_sum = np.sum(np.array([(psi_j_t[j, :] - psi_j_dot[j])**2 for j in range(m)]), axis=1)
+        inner_sum = np.sum(np.array([(psi_j_t[j, :] - psi_j_dot[j])**2
+                                     for j in range(m)]), axis=1)
         outer_sum = np.sum(inner_sum)
         W = outer_sum / (m*(n-1))
 
