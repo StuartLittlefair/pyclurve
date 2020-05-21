@@ -56,6 +56,7 @@ class EclipseLC(Model):
         self.lightcurves = lightcurves
         self.model_file = model_file
 
+
     def get_value(self, band):
         """
         Calculate lightcurve
@@ -87,7 +88,7 @@ class EclipseLC(Model):
         ebv = 0.05
         Av = 3.1 * ebv
 
-        scale_factor = utils.scalefactor(a, self.parallax, Av, cam.eff_wl[band])
+        scale_factor = utils.scalefactor(a, self.parallax, cam.eff_wl[band], Av)
         lcurve_pars['t1'] = utils.get_Tbb(self.t1, log_g1, band, star_type='WD',
                                           source='Bergeron')
         lcurve_pars['t2'] = utils.get_Tbb(self.t2, log_g2, band, star_type='MS')
@@ -100,6 +101,7 @@ class EclipseLC(Model):
         lcurve_pars['wavelength'] = cam.eff_wl[band].to_value(u.nm)
         lcurve_pars['phase1'] = np.arcsin(lcurve_pars['r1'] - lcurve_pars['r2']) / (2 * np.pi)
         lcurve_pars['phase2'] = 0.5 - lcurve_pars['phase1']
+        lcurve_model.set(lcurve_pars)
         lcurve_model.set(utils.get_ldcs(self.t1, logg_1=log_g1, band=band,
                                         star_type_1='WD', teff_2=self.t2,
                                         logg_2=log_g2, star_type_2='MS'))
@@ -354,7 +356,7 @@ if __name__ == "__main__":
 
                 model.plot(ax_main, band, params, style='whole', dcolor=color)
                 model.plot(ax_res, band, params, style='residuals', dcolor=color)
-                if band != light_curves.keys()[-1]:
+                if band != list(light_curves.keys())[-1]:
                     plt.setp(ax_main.get_xticklabels(), visible=False)
                     plt.setp(ax_res.get_xticklabels(), visible=False)
             plt.savefig('lightCurves_nochain.pdf')

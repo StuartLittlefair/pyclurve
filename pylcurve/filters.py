@@ -14,7 +14,8 @@ class filters:
     super SDSS (HiPERCAM) filter profiles
     """
     
-    def __init__(self, instrument='hcam', fpath=resource_filename('pylcurve', 'data/filter_profiles/')):
+    def __init__(self, instrument='hcam',
+                 fpath=resource_filename('pylcurve', 'data/filter_profiles/')):
 
         choices = ['hcam', 'ucam', 'ucam_s', 'ucam_super', 'ucam_sloan',
                    'ucam_old', 'uspec', 'sdss']

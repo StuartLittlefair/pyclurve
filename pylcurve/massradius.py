@@ -24,10 +24,11 @@ coords_in = list(zip(baraffe['M/Ms'], 10**(baraffe['logt(yr)']-9)))
 coords_out = list(baraffe['R/Rs'])
 
 he_interpolator = LinearNDInterpolator(he_coords_in, he_coords_out,
-                                        rescale=True)
+                                       rescale=True)
 co_interpolator = LinearNDInterpolator(co_coords_in, co_coords_out,
                                        rescale=True)
-ms_interpolator['baraffe'] = LinearNDInterpolator(coords_in, coords_out, rescale=True)
+ms_interpolator['baraffe'] = LinearNDInterpolator(coords_in, coords_out,
+                                                  rescale=True)
 ms_interpolator['empirical'] = interp1d(mass, radius)
 
 mr_interpolator['He'] = he_interpolator
