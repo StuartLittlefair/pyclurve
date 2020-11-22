@@ -27,8 +27,8 @@ All typical user modified variables are denoted by "ENTER" for ease.
 
 # cam = filters('sdss') ## SDSS throughputs
 # cam = filters('ucam_sloan') ## ULTRACAM throughputs with standard sloan filters
-# cam = filters('ucam') ## ULTRACAM throughputs with super filters
-cam = filters('hcam') ## HiPERCAM throughputs with super filters
+cam = filters('ucam') ## ULTRACAM throughputs with super filters
+# cam = filters('hcam') ## HiPERCAM throughputs with super filters
 
 
 class EclipseLC(Model):
