@@ -171,8 +171,7 @@ def run_burnin(sampler, startPos, nSteps, store=False, progress=True):
     iStep = 0
     if progress:
         bar = tqdm(total=nSteps)
-    for pos, prob, state in sampler.sample(startPos, iterations=nSteps,
-                                           store=store):
+    for pos, prob, state in sampler.sample(startPos, iterations=nSteps, store=store):
         iStep += 1
         if progress:
             bar.update()
@@ -201,9 +200,13 @@ def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, **kwar
             # loop over all walkers and append to file
             thisPos = pos[k]
             thisProb = prob[k]
-            if file:
-                f.write("{0:4d} {1:s} {2:f}\n".format(k, " ".join(map(str, thisPos)),
-                                                      thisProb))
+            if np.any(state.blobs):
+                thisBlob = state.blobs[k]
+                if file:
+                    f.write("{0:4d} {1:s} {2:s} {3:f}\n".format(k, " ".join(map(str, thisPos)), " ".join(map(str, thisBlob)), thisProb))
+            else:
+                if file:
+                    f.write("{0:4d} {1:s} {2:f}\n".format(k, " ".join(map(str, thisPos)), thisProb))
         if file:
             f.close()
     return sampler
@@ -227,13 +230,12 @@ def readchain(file, nskip=0, thin=1):
     nwalkers = int(data[:, 0].max()+1)
     nprod = int(data.shape[0]/nwalkers)
     npars = data.shape[1] - 1  # first is walker ID, last is ln_prob
-    chain = np.reshape(data[:, 1:], (nwalkers, nprod, npars))
+    chain = np.reshape(data[:, 1:], (nwalkers, nprod, npars), order='C')
     return chain
 
 
 def readflatchain(file):
-    data = pd.read_csv(file, header=None, compression=None,
-                       delim_whitespace=True)
+    data = pd.read_csv(file, header=None, compression=None, delim_whitespace=True)
     data = np.array(data)
     return data
 
