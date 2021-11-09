@@ -21,7 +21,13 @@ components. The third-party requirements are:
 
 - `emcee <http://http://dfm.io/emcee/current/>`_ for MCMC fitting;
 
-- `celerite <https://celerite.readthedocs.io/en/stable/>`_, used for scalable Gaussian processes.
+- `celerite <https://celerite.readthedocs.io/en/stable/>`_, used for scalable Gaussian processes;
+
+- `corner <https://corner.readthedocs.io/en/latest/>`_, for nice corner plots;
+
+- `dust_extinction <https://dust-extinction.readthedocs.io/en/latest/>`_, used to calculate interstellar extinctions;
+
+- `ruamel.yaml <https://yaml.readthedocs.io/en/latest/>_, used for easy config files.
 
 
 Usually, installing with pip will handle these dependencies for you, so installation is a simple matter of typing::
