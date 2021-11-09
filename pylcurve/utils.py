@@ -1,17 +1,22 @@
 import numpy as np
 import astropy.units as u
-from scipy.integrate import quad
-from astropy.constants import G
-from astropy.modeling.blackbody import blackbody_lambda, blackbody_nu
+from scipy.integrate import quad, simps
+from astropy.constants import G, sigma_sb
+from astropy.modeling.physical_models import BlackBody
+from .filters import filters
 from .blackbody import bb_interpolator
 from .limbdark import ld_interpolator
+from .gravitydark import gdark_interpolator, beta_interpolator
 from .massradius import mr_interpolator
 from .rochedistortion import roche_interpolator
-from dust_extinction.parameter_averages import F20
+from dust_extinction.parameter_averages import F19
 
 
-def get_Tbb(teff, logg, band, instrument='ucam_sloan',
-            star_type='WD', source='Bergeron'):
+bb = BlackBody()
+
+
+def get_Tbb(teff, logg, band, instrument='ucam',
+            star_type='WD', source='Claret'):
     """
     Interpolates Teff to Tbb tables for a given filter band
     ('u', 'g', 'r', 'i', or 'z') for PHOENIX main-sequence
@@ -47,21 +52,31 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
     return ldcs
 
 
+def get_gdc(teff, logg, band, beta=None):
+    hcam = filters()
+    if not beta:
+        beta = beta_interpolator(np.log10(teff))
+    if band in hcam.bands:
+        return beta * gdark_interpolator[band](teff, logg)[0] + gdark_interpolator[band](teff, logg)[1]
+    else:
+        return beta * gdark_interpolator[band+'s'](teff, logg)[0] + gdark_interpolator[band+'s'](teff, logg)[1]
+
+
 def get_radius(mass, temp=None, star_type='CO',
-               relation='empirical', age_gyr=5):
+               relation='empirical', factor=1.0, age_gyr=5):
     """
     Interpolates mass-radius relations for WDs (CO-core('CO') or He-core('He'))
     and for M-dwarfs ('empirical' or 'baraffe'). For baraffe, tracks of
     different ages can be selected.
     """
-    if star_type=='He' or star_type=='CO':
+    if star_type=='He' or star_type=='CO' or star_type=='ONe':
         radius = mr_interpolator[star_type](mass, temp)
     elif star_type=='MS':
         if relation=='empirical':
             radius = mr_interpolator[star_type][relation](mass)
         else:
             radius = mr_interpolator[star_type][relation](mass, age_gyr)
-    return radius
+    return radius * factor
 
 
 def Rva_to_Rl1(q, r_VA_a):
@@ -121,7 +136,7 @@ def m1m2(vel_scale, q, P):
     return m1, m2
 
 
-def scalefactor(a, parallax, wavelength=550*u.nm, Av=0):
+def scalefactor(a, parallax, wavelength=550*u.nm, Ebv=0):
     """
     Calculates an Lcurve scalefactor for use with flux calibrated data given
     an orbital separation and parallax, taking reddening into account.
@@ -132,7 +147,71 @@ def scalefactor(a, parallax, wavelength=550*u.nm, Av=0):
     d = ((1000 / parallax) * u.parsec).to(u.R_sun)
     # lcurve flux is in W/m^2/separation^2 -> correct to Janskys
     # and account for reddening
-    ext = F20(Rv=3.1)
-    extinction_fac = ext.extinguish(wavelength, Av)
-    sf = (a**2 / d**2) * extinction_fac
-    return sf * 10**26
+    ext = F19(Rv=3.1)
+    extinction_fac = ext.extinguish(wavelength, Ebv)
+    sf = (a**2 / d**2) * 10**26 * extinction_fac
+    return sf
+
+
+def integrate_disk(teff, logg, radius, parallax, Ebv, band, wd_model='Claret'):
+    if wd_model != 'Claret':
+        cam = filters(wd_model)
+    else:
+        cam = filters()
+
+    ext = F19(Rv=3.1)
+    # Central intensity in Janskys from blackbody temperature for model
+    t_bb = float(bb_interpolator['WD'][wd_model][band](teff, logg))
+    I_cen = (bb.evaluate(cam.eff_wl[band], t_bb*u.K, scale=1) * u.sr).to_value(u.Jansky)
+    # Get limb darkening for model
+    c1, c2, c3, c4 = ld_interpolator['WD'][band](teff, logg)
+    # Integrate total flux of disk from central intensity and limb-darkening law
+    int_flux = 2 * np.pi * I_cen * quad(Claret_LD_law, 0, 1, args=(c1, c2, c3, c4))[0]
+    # Scale to distance and account for extinction
+    d = ((1000 / parallax) * u.parsec).to(u.R_sun)
+    R = (radius * u.R_sun)
+    scale =  (radius**2/d**2).value * ext.extinguish(cam.eff_wl[band], Ebv=Ebv)
+    flux = scale * int_flux
+    return flux
+
+
+def h(theta, r2, a):
+    """
+    Equation 54 from Ritter (2000). Scales irradiating flux as seen at centre of
+    secondary to an element on its surface at angle theta from centre-line
+    between stars (assumes irradiating source is a point source as in Fig. 5.).
+    """
+    fs = r2/a
+    top = np.cos(theta) - fs
+    bottom = (1 - 2*fs*np.cos(theta) + fs**2)**1.5
+    return top / bottom
+
+
+def Gsin(theta, t1, r1, t2, r2, a):
+    """
+    Integrand of Equation 60 from Ritter (2000). Modified so G=0 for a surface
+    element when F_irr >= F_0.
+    """
+    F_irr = (sigma_sb.value * r1**2 * t1**4 * h(theta, r2, a)) / a**2
+    F_0 = sigma_sb.value * t2**4
+
+    out = np.zeros_like(theta)
+    out[F_irr < F_0] = (1 - ( F_irr[F_irr < F_0] / F_0)) * np.sin(theta[F_irr < F_0])
+    return out
+
+
+def irradiate(t1, r1, t2, r2, a):
+    """
+    
+    """
+    theta_max = np.arccos(r2/a)
+    thetas = np.linspace(theta_max, 0, 100)
+
+    # s_eff = 0.5 * (1 - (r2/a) - quad(Gsin, 0, theta_max, args=(t1, r1, t2, r2, a))[0])
+    # calculate s_eff following Eqn.60 from Ritter (2000)
+    # https://ui.adsabs.harvard.edu/abs/2000A%26A...360..969R/abstract
+
+    s_eff = 0.5 * (1 - (r2/a) - simps(Gsin(thetas, t1, r1, t2, r2, a), thetas))
+    # irradiation inflation according to equation 17 from Ritter (2000)
+    r_irr = r2 * (1 - s_eff)**-0.1
+    return r_irr
