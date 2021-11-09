@@ -105,8 +105,8 @@ class Lcurve(OrderedDict):
             and self.vcheck('ldc2_3', -50., 50.)
             and self.vcheck('ldc2_3', -50., 50.)
             and self.vcheck('period', 0., 100.)
-            and self.vcheck('gravity_dark1', 0., 1.)
-            and self.vcheck('gravity_dark2', 0., 1.)
+            and self.vcheck('gravity_dark1', 0., 5.)
+            and self.vcheck('gravity_dark2', 0., 5.)
             and (
                  self['add_disc'][0] == '0'
                  or (
@@ -188,6 +188,42 @@ class Lcurve(OrderedDict):
         return output, fname
 
 
+    def run_model(self, t1, t2, exptime, fname=None, scale_factor=1, noise=0, npoints=None):
+        """
+        Run lroche to produce a model light curve given parameters.
+        If no fname given then a temporary filename will be given.
+        
+        Returns
+        -------
+        fname: filename of written lroche light curve model.
+        """
+        tfile = self.write()
+
+        if not fname:
+            (fd, fname) = tempfile.mkstemp()
+        
+        if not npoints:
+            npoints = int((t2 - t1) / exptime)
+            print(npoints)
+
+        # build the command, run it, read the results.
+        args = (lroche, 'model=' + tfile, 'data=none', 'time1={}'.format(t1),
+                'time2={}'.format(t2), 'ntime={}'.format(npoints), 'expose={}'.format(exptime),
+                'ndivide=1', 'noise={}'.format(noise), 'seed=12345', 'nfile=1',
+                'output={}'.format(fname), 'device=null', 'ssfac={}'.format(scale_factor),
+                'nodefs')
+
+        p = subprocess.Popen(args, close_fds=True,
+                             stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE)
+        sout, serr = p.communicate()
+        
+        # delete the temporary file
+        os.remove(tfile)
+        os.close(fd)
+        return fname
+
+
     def tcontrast(self):
         """
         Run tcontrast, and get mean dayside and nightside temperatures.
@@ -220,6 +256,37 @@ class Lcurve(OrderedDict):
         return x, y-ym, e
 
 
+    def get_output(self, output, scale_factor=None):
+        # interpret the output
+        subout = [out for out in output if out.startswith('Weighted')]
+        if not scale_factor:
+            if len(subout) == 1:
+                eq = subout[0].find('=')
+                comma = subout[0].find(',')
+                chisq = float(subout[0][eq+2:comma])
+                wnok = float(subout[0][subout[0].find('wnok =')+6:].strip())
+                subout = [out for out in output if out.startswith('White dwarf')]
+                if len(subout) == 1:
+                    eq = subout[0].find('=')
+                    wdwarf = float(subout[0][eq+2:])
+                    
+                else:
+                    print("Can't find white dwarf's contribution. lroche out of date.")
+                    chisq = wnok = wdwarf = None
+
+            else:
+                chisq = wnok = wdwarf = None
+                print('Output from lroche failure')
+            return chisq, wnok, wdwarf
+
+        else:
+            subout = [out for out in output if out.startswith('White dwarf')]
+            if len(subout) == 1:
+                eq = subout[0].find('=')
+                wdwarf = float(subout[0][eq+2:])
+            return wdwarf
+
+
     def __call__(self, data, scale_factor=None):
         output, fname = self.run(data, scale_factor)
         t, et, y, ye, _, _ = np.loadtxt(data).T
@@ -240,7 +307,7 @@ class Lcurve(OrderedDict):
         If something goes wrong, it comes back with 'None'
         in each of these values.
         """
-        output, fname = self.run(data, scale_factor=None)
+        output, fname = self.run(data, scale_factor=scale_factor)
         os.remove(fname)
 
         # interpret the output
