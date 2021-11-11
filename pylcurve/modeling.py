@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# This is a carbon copy of celerites modeling protocol
+# This is a carbon copy of celerites modelling protocol
 
 
 from __future__ import division, print_function
@@ -12,7 +12,7 @@ __all__ = ["Model", "ModelSet", "ConstantModel"]
 
 class Model(object):
     """
-    An abstract class implementing the skeleton of the modeling protocol
+    An abstract class implementing the skeleton of the modelling protocol
 
     Initial parameter values can either be provided as arguments in the same
     order as ``parameter_names`` or by name as keyword arguments.
@@ -96,6 +96,7 @@ class Model(object):
         if not quiet and not np.isfinite(self.log_prior()):
             raise ValueError("non-finite log prior value")
 
+
     def get_value(self, *args, **kwargs):
         """
         Compute the "value" of the model for the current parameters
@@ -105,6 +106,7 @@ class Model(object):
 
         """
         raise NotImplementedError("overloaded by subclasses")
+
 
     def compute_gradient(self, *args, **kwargs):
         """
@@ -117,6 +119,7 @@ class Model(object):
         """
         raise NotImplementedError("overloaded by subclasses")
 
+
     def get_gradient(self, *args, **kwargs):
         include_frozen = kwargs.pop("include_frozen", False)
         g = self.compute_gradient(*args, **kwargs)
@@ -124,8 +127,10 @@ class Model(object):
             return g
         return g[self.unfrozen_mask]
 
+
     def __len__(self):
         return self.vector_size
+
 
     def _get_name(self, name_or_index):
         try:
@@ -134,26 +139,32 @@ class Model(object):
             return name_or_index
         return self.get_parameter_names()[int(name_or_index)]
 
+
     def __getitem__(self, name_or_index):
         return self.get_parameter(self._get_name(name_or_index))
 
+
     def __setitem__(self, name_or_index, value):
         return self.set_parameter(self._get_name(name_or_index), value)
+
 
     @property
     def full_size(self):
         """The total number of parameters (including frozen parameters)"""
         return len(self.parameter_names)
 
+
     @property
     def vector_size(self):
         """The number of active (or unfrozen) parameters"""
         return self.unfrozen_mask.sum()
 
+
     @property
     def parameter_vector(self):
         """An array of all parameters (including frozen parameters)"""
         return np.array([getattr(self, k) for k in self.parameter_names])
+
 
     @parameter_vector.setter
     def parameter_vector(self, v):
@@ -162,6 +173,7 @@ class Model(object):
         for k, val in zip(self.parameter_names, v):
             setattr(self, k, float(val))
         self.dirty = True
+
 
     def get_parameter_dict(self, include_frozen=False):
         """
@@ -176,6 +188,7 @@ class Model(object):
             self.get_parameter_names(include_frozen=include_frozen),
             self.get_parameter_vector(include_frozen=include_frozen),
         ))
+
 
     def get_parameter_names(self, include_frozen=False):
         """
@@ -192,6 +205,7 @@ class Model(object):
                      for p, f in zip(self.parameter_names, self.unfrozen_mask)
                      if f)
 
+
     def get_parameter_bounds(self, include_frozen=False):
         """
         Get a list of the parameter bounds
@@ -207,6 +221,7 @@ class Model(object):
                     for p, f in zip(self.parameter_bounds, self.unfrozen_mask)
                     if f)
 
+
     def get_parameter_vector(self, include_frozen=False):
         """
         Get an array of the parameter values in the correct order
@@ -219,6 +234,7 @@ class Model(object):
         if include_frozen:
             return self.parameter_vector
         return self.parameter_vector[self.unfrozen_mask]
+
 
     def set_parameter_vector(self, vector, include_frozen=False):
         """
@@ -241,6 +257,7 @@ class Model(object):
         self.parameter_vector = v
         self.dirty = True
 
+
     def freeze_parameter(self, name):
         """
         Freeze a parameter by name
@@ -251,6 +268,7 @@ class Model(object):
         """
         i = self.get_parameter_names(include_frozen=True).index(name)
         self.unfrozen_mask[i] = False
+
 
     def thaw_parameter(self, name):
         """
@@ -263,13 +281,16 @@ class Model(object):
         i = self.get_parameter_names(include_frozen=True).index(name)
         self.unfrozen_mask[i] = True
 
+
     def freeze_all_parameters(self):
         """Freeze all parameters of the model"""
         self.unfrozen_mask[:] = False
 
+
     def thaw_all_parameters(self):
         """Thaw all parameters of the model"""
         self.unfrozen_mask[:] = True
+
 
     def get_parameter(self, name):
         """
@@ -281,6 +302,7 @@ class Model(object):
         """
         i = self.get_parameter_names(include_frozen=True).index(name)
         return self.get_parameter_vector(include_frozen=True)[i]
+
 
     def set_parameter(self, name, value):
         """
@@ -295,6 +317,7 @@ class Model(object):
         v = self.get_parameter_vector(include_frozen=True)
         v[i] = value
         self.set_parameter_vector(v, include_frozen=True)
+
 
     def log_prior(self):
         """Compute the log prior probability of the current parameters"""
@@ -338,27 +361,33 @@ class ModelSet(Model):
         for name, model in models:
             self.models[name] = model
 
+
     def __getattr__(self, name):
         if "models" in self.__dict__ and name in self.models:
             return self.models[name]
         raise AttributeError(name)
 
+
     @property
     def dirty(self):
         return any(m.dirty for m in self.models.values())
+
 
     @dirty.setter
     def dirty(self, value):
         for m in self.models.values():
             m.dirty = value
 
+
     @property
     def full_size(self):
         return sum(m.full_size for m in self.models.values())
 
+
     @property
     def vector_size(self):
         return sum(m.vector_size for m in self.models.values())
+
 
     @property
     def unfrozen_mask(self):
@@ -366,11 +395,13 @@ class ModelSet(Model):
             m.unfrozen_mask for m in self.models.values()
         ])
 
+
     @property
     def parameter_vector(self):
         return np.concatenate([
             m.parameter_vector for m in self.models.values()
         ])
+
 
     @parameter_vector.setter
     def parameter_vector(self, v):
@@ -380,6 +411,7 @@ class ModelSet(Model):
             m.parameter_vector = v[i:i+length]
             i += length
 
+
     @property
     def parameter_names(self):
         return tuple(chain(*(
@@ -387,11 +419,13 @@ class ModelSet(Model):
             for name, m in self.models.items()
         )))
 
+
     @property
     def parameter_bounds(self):
         return list(chain(*(
             m.parameter_bounds for m in self.models.values()
         )))
+
 
     def _apply_to_parameter(self, func, name, *args):
         comp = name.split(":")
@@ -399,26 +433,33 @@ class ModelSet(Model):
             raise ValueError("unrecognized parameter '{0}'".format(name))
         return getattr(self.models[comp[0]], func)(":".join(comp[1:]), *args)
 
+
     def freeze_parameter(self, name):
         self._apply_to_parameter("freeze_parameter", name)
 
+
     def thaw_parameter(self, name):
         self._apply_to_parameter("thaw_parameter", name)
+
 
     def freeze_all_parameters(self):
         for model in self.models.values():
             model.freeze_all_parameters()
 
+
     def thaw_all_parameters(self):
         for model in self.models.values():
             model.thaw_all_parameters()
 
+
     def get_parameter(self, name):
         return self._apply_to_parameter("get_parameter", name)
+
 
     def set_parameter(self, name, value):
         self.dirty = True
         return self._apply_to_parameter("set_parameter", name, value)
+
 
     def log_prior(self):
         lp = 0.0
@@ -442,6 +483,7 @@ class ConstantModel(Model):
 
     def get_value(self, x):
         return self.value + np.zeros_like(x)
+
 
     def compute_gradient(self, x):
         return np.array([np.ones_like(x)])

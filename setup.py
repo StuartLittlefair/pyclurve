@@ -14,8 +14,11 @@ with open('HISTORY.rst') as history_file:
 requirements = [
     'astropy',
     'emcee',
+    'corner',
     'celerite',
-    'tqdm'
+    'tqdm',
+    'dust_extinction',
+    'ruamel.yaml'
 ]
 
 test_requirements = [

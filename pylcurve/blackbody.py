@@ -41,5 +41,9 @@ for instrument in instruments:
     tab_WD = Table.read(fpath + 'Twd_to_Tbb_{}.dat'.format(instrument), format='ascii.tab')
     wd_interpolator[instrument] = build_interpolator(tab_WD, cam.bands)
 
+hcam = filters()
+tab_WD = Table.read(fpath + 'Twd_to_Tbb_Claret_x2.dat', format='ascii.tab')
+wd_interpolator['Claret'] = build_interpolator(tab_WD, hcam.bands)
+
 bb_interpolator['MS'] = ms_interpolator
 bb_interpolator['WD'] = wd_interpolator
