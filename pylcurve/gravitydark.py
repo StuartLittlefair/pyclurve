@@ -4,7 +4,7 @@ from scipy.interpolate import LinearNDInterpolator, interp1d
 from filters import filters
 from glob import glob
 
-x
+
 """
 Creates interpolator for use in utils.get_gdark function.
 Interpolates precomputed tables of gravity darkening coefficients
