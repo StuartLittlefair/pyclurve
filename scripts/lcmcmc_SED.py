@@ -10,11 +10,11 @@ from scipy.optimize import least_squares, minimize
 import os
 import shutil
 
-from lcurve import Lcurve
-from modelling import Model
-import mcmc_utils as m
-import utils as utils
-from filters import filters
+from pylcurve.lcurve import Lcurve
+from pylcurve.modelling import Model
+import pylcurve.mcmc_utils as m
+import pylcurve.utils as utils
+from pylcurve.filters import filters
 
 
 """
