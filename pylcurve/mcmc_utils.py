@@ -58,6 +58,7 @@ class Prior(object):
         if type == 'mod_jeff':
             self.normalise = np.log((self.p1+self.p2)/self.p1)
 
+
     def ln_prob(self, val):
         if self.type == 'gauss':
             p = stats.norm(scale=self.p2, loc=self.p1).pdf(val)
@@ -189,17 +190,19 @@ def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, **kwar
     iStep = 0
     if progress:
         bar = tqdm(total=nSteps)
-    for pos, prob, state in sampler.sample(startPos, iterations=nSteps,
-                                           rstate0=rState, store=True, **kwargs):
+    for state in sampler.sample(startPos, iterations=nSteps,
+                                rstate0=rState, store=True, **kwargs):
+        # print(state.blobs)
+        # print(state.log_prob)
         if file:
             f = open(file, "a")
         iStep += 1
         if progress:
             bar.update()
-        for k in range(pos.shape[0]):
+        for k in range(state.coords.shape[0]):
             # loop over all walkers and append to file
-            thisPos = pos[k]
-            thisProb = prob[k]
+            thisPos = state.coords[k]
+            thisProb = state.log_prob[k]
             if np.any(state.blobs):
                 thisBlob = state.blobs[k]
                 if file:
@@ -220,12 +223,11 @@ def flatchain(chain, npars, nskip=0, thin=1):
     by only retrieving a point every thin steps - thinning can be useful when
     the steps of the chain are highly correlated
     '''
-    return chain[:, nskip::thin, :].reshape((-1, npars))
+    return chain[nskip::thin, :, :].reshape((-1, npars))
 
 
 def readchain(file, nskip=0, thin=1):
-    data = pd.read_csv(file, header=None, compression=None,
-                       delim_whitespace=True)
+    data = pd.read_csv(file, header=None, compression=None, delim_whitespace=True)
     data = np.array(data)
     nwalkers = int(data[:, 0].max()+1)
     nprod = int(data.shape[0]/nwalkers)
@@ -241,10 +243,10 @@ def readflatchain(file):
 
 
 def plotchains(chain, npar, alpha=0.2):
-    nwalkers, nsteps, npars = chain.shape
+    nsteps, nwalkers, npars = chain.shape
     fig = plt.figure()
     for i in range(nwalkers):
-        plt.plot(chain[i, :, npar], alpha=alpha, color='k')
+        plt.plot(chain[:, i, npar], alpha=alpha, color='k')
     return fig
 
 

@@ -46,7 +46,9 @@ class Model(object):
 
     parameter_names = tuple()
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, parameter_names=None, *args, **kwargs):
+        if parameter_names:
+            self.parameter_names = parameter_names
         self.unfrozen_mask = np.ones(self.full_size, dtype=bool)
         self.dirty = True
 

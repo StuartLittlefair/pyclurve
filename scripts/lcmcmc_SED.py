@@ -3,18 +3,17 @@ from multiprocessing import Pool
 import numpy as np
 import astropy.units as u
 import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import matplotlib as mpl
-import seaborn as sns
-from scipy.optimize import least_squares, minimize
+from scipy.optimize import minimize
 import os
 import shutil
+from astropy.table import Table
 
 from pylcurve.lcurve import Lcurve
 from pylcurve.modelling import Model
 import pylcurve.mcmc_utils as m
 import pylcurve.utils as utils
 from pylcurve.filters import filters
+import pylcurve.plotting as p
 
 
 """
@@ -22,25 +21,13 @@ This script fits flux calibrated, multi-band primary eclipse photometry of
 WD-WD/WD-dM binaries using an MCMC method to run Tom Marsh's LROCHE routine.
 Using mass-radius relations it can determine stellar masses and effective
 temperatures for both components.
-
-All typical user modified variables are denoted by "ENTER" for ease.
 """
-
-def t2phase(t, t0, P):
-    phase = ((t - t0) / P) % 1
-    phase[phase > 0.5] -=1 
-    return phase
 
 
 class EclipseLC(Model):
 
     def __init__(self, config, *args, **kwargs):
-        """
-        A lightcurve model for an eclipsing WD-WD/WD-dM.
-
-        Parameters
-        ----------
-        model_file: model containing LCURVE file with auxillary (fixed) params
+        """from pylcurve.filters import filtersms
         lightcurves: a dictionary of band: filename pairs
 
         The remaining parameters are either passed in as a list of arguments
@@ -53,14 +40,13 @@ class EclipseLC(Model):
         per : orbital period of system
         parallax : parallax of system
         """
-        super().__init__(*args, **kwargs)
         self.config = config
-        # self.parameter_names = tuple(self.config['params'].keys())
         self.lightcurves = self.config['light_curves']
         self.cam = filters(self.config['filter_system'])
         self.flux_uncertainty = self.config['flux_uncertainty']
         self.lcurve_model = Lcurve(self.config['model_file'])
         self.set_core_parameters()
+        super().__init__(*args, **kwargs)
     
 
     def set_core_parameters(self):
@@ -102,22 +88,6 @@ class EclipseLC(Model):
             return self.t2_i
         if band == 'zs' or band == 'z':
             return self.t2_z
-
-    def tcen_free(self, band, log_g1):
-        if band == 'us' or band == 'u':
-            return self.tcen_u
-        if band == 'gs' or band == 'g':
-            return self.tcen_g
-        if band == 'rs' or band == 'r':
-            return self.tcen_r
-        if band == 'is' or band == 'i':
-            return utils.get_Tbb(self.t1, log_g1, band, star_type='WD',
-                                 source=self.config['wd_model'],
-                                 instrument=self.config['filter_system'])
-        if band == 'zs' or band == 'z':
-            return utils.get_Tbb(self.t1, log_g1, band, star_type='WD',
-                                 source=self.config['wd_model'],
-                                 instrument=self.config['filter_system'])
     
 
     def slope(self, band):
@@ -200,16 +170,15 @@ class EclipseLC(Model):
         #                                 star_type_1='WD', teff_2=self.t2_free(band),
         #                                 logg_2=log_g2, star_type_2='MS'))
         self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=log_g1, band=band,
-                                        star_type_1='WD', teff_2=self.t2,
-                                        logg_2=log_g2, star_type_2='MS'))
+                                             star_type_1='WD', teff_2=self.t2,
+                                             logg_2=log_g2, star_type_2='MS'))
 
-        # scale_factor = utils.scalefactor(a, self.parallax, wavelength=self.cam.eff_wl[band].to(u.nm), Ebv=self.ebv)
         if not self.lcurve_model.ok():
             raise ValueError('invalid parameter combination')
         ym, wdwarf = self.lcurve_model(self.lightcurves[band])
 
-        # ym, wdwarf = self.lcurve_model(self.lightcurves[band], scale_factor)
         return ym, wdwarf, wd_model_flux
+
 
     def log_prior(self):
         """
@@ -227,57 +196,6 @@ class EclipseLC(Model):
             prior = m.Prior(*self.config['priors'][var])
             val += prior.ln_prob(self.parameter_vector[idx])
         return val
-
-    def plot(self, ax, band, params, style='whole', dcolor='k'):
-        """
-        Plots data and model on axis
-
-        style is either whole, model or residuals.
-            'whole' plots the raw data and the full model (mean model + GP).
-
-            'model' plots the mean model and the data after subtraction
-             of the mean of the GP - i.e the data minus the pulsations
-
-            'residuals' plots the data minus the mean model, together with the
-            mean and range of the GP
-        """
-        self.set_parameter_vector(params)
-        t, _, y, ye, _, _ = np.loadtxt(self.lightcurves[band]).T
-        ym = self.get_value(band)[0]
-
-        toff = int(np.floor(np.min(t)))
-        tplot = t - toff
-
-        if style == 'whole':
-            # ax.errorbar(t, y, yerr=ye, fmt='none', color=dcolor, alpha=0.5)
-            ax.scatter(t, y, color=dcolor, marker='.', alpha=0.5)
-            ax.plot(t, ym, color='k', lw=1, ls='-')
-        elif style == 'residuals':
-            # ax.errorbar(t, y-ym, yerr=ye, fmt='none', color=dcolor, alpha=0.5)
-            ax.scatter(t, y-ym, color=dcolor, marker='.', alpha=0.5)
-        else:
-            raise ValueError('style not recognised')
-    
-    def plot_SED(self, ax, params):
-        self.set_parameter_vector(params)
-        wd_model = []
-        wd_real = []
-        wd_err = []
-        wavelength = []
-        for band in light_curves.keys():
-            ym, wdwarf, wd_model_flux = self.get_value(band)
-            ax.errorbar(self.cam.eff_wl[band].value, wdwarf,
-                        yerr=self.flux_uncertainty[band]*wdwarf, c='k',
-                        marker='.', elinewidth=1)
-            ax.scatter(self.cam.eff_wl[band], wd_model_flux, c='r', marker='.')
-            wd_model.append(wd_model_flux)
-            wd_real.append(wdwarf)
-            wd_err.append(self.flux_uncertainty[band]*wdwarf)
-            wavelength.append(self.cam.eff_wl[band].value)
-        out = np.column_stack((np.array(wavelength), np.array(wd_real), np.array(wd_err), np.array(wd_model)))
-        # print(out)
-        # np.savetxt('MCMC_runs/{}/{}_SED.dat'.format(self.config['run_name'],self.config['run_name']), out)
-
 
     
     def model(self, band, params):
@@ -344,12 +262,8 @@ if __name__ == "__main__":
     from ruamel.yaml import YAML
     os.nice(5)
     
-    # conf_file = 'GaiaDR2_4384149753578863744.yaml'
-    conf_file = '2MASS_J1358-3556_irr_noparallax.yaml'
-    # conf_file = 'ZTFJ2353_mag.yaml'
-    # conf_file = 'CSS40190.yaml'
-    # conf_file = 'SDSSJ1028_slope2.yaml'
-    # conf_file = 'EC12250-3026.yaml'
+    conf_file = '1712af_CO_corr.yaml'
+
 
     # parser.add_argument('--conf', '-c', action='store', default=conf_file)
     # args = parser.parse_args()
@@ -382,23 +296,13 @@ if __name__ == "__main__":
 
 ###############################################################################
 
-    class clickevent:
-        def __init__(self, list, fig):
-            self.list = list
-            self.cid = fig.canvas.mpl_connect('button_press_event', self)
-
-        def __call__(self, event):
-            if event.inaxes is not None:
-                self.list.append(event.xdata)
-                if len(self.list) == 4:
-                    plt.close()
-
     def model_chisq(params):
         chisq = 0
         model.set_parameter_vector(params)
         for band in light_curves.keys():
             chisq += model.chisq(params, band)
         return chisq
+
 
     def model_likelihood(params):
         val = 0
@@ -407,11 +311,12 @@ if __name__ == "__main__":
             val += model.log_probability(params, band)
         return val
     
+
     def model_prior(params):
         model.set_parameter_vector(params)
         return model.log_prior()
 
-    # wrapper to combine log probability from all bands
+
     def log_probability(params):
         val = 0
         model.set_parameter_vector(params)
@@ -423,137 +328,15 @@ if __name__ == "__main__":
             val += model.log_probability(params, band, factor)
         val += model.log_prior()
         return val
-    
-
-    def plot_model(params, show=True, save=False, name='lightCurves.pdf'):
-        gs = gridspec.GridSpec(len(list(light_curves.keys())), 2)
-        gs.update(hspace=0.0)
-
-        shared_ax = None
-        for iband, band in enumerate(light_curves.keys()):###################
-            if shared_ax:
-                ax_main = plt.subplot(gs[iband, 0], sharex=shared_ax)
-                ax_res = plt.subplot(gs[iband, 1], sharex=ax_main)
-            else:
-                ax_main = plt.subplot(gs[iband, 0])
-                shared_ax = ax_main
-                ax_res = plt.subplot(gs[iband, 1], sharex=ax_main)
-            color = sns.color_palette('nipy_spectral', 5)[iband-1]
-
-            model.plot(ax_main, band, params, style='whole', dcolor=color)
-            model.plot(ax_res, band, params, style='residuals', dcolor=color)
-            if band != list(light_curves.keys())[-1]:
-                plt.setp(ax_main.get_xticklabels(), visible=False)
-                plt.setp(ax_res.get_xticklabels(), visible=False)
-        if save:
-            plt.savefig(name)
-        if show:
-            plt.show()
-        plt.close()
-
-    def plot(params, config, name='lightCurves_nice.pdf', dataname=None):
-
-        mpl.rcParams['text.usetex'] = True
-        mpl.rcParams['pdf.fonttype'] = 42
-        mpl.rcParams['ps.fonttype'] = 42
-        mpl.rcParams['mathtext.fontset'] = 'stix'
-        mpl.rcParams['font.family'] = 'STIXGeneral'
-        mpl.rcParams['font.size'] = 14
-
-        band_colours = {
-            'us': 'cornflowerblue',
-            'u': 'cornflowerblue',
-            'gs': 'limegreen',
-            'g': 'limegreen',
-            'rs': 'orange',
-            'r': 'orange',
-            'is': 'orangered',
-            'i': 'orangered',
-            'zs': 'darkred',
-            'z': 'darkred'
-        }
-
-        annotate_str = {
-            'us' : r'$u_{s}$',
-            'gs' : r'$g_{s}$',
-            'rs' : r'$r_{s}$',
-            'is' : r'$i_{s}$',
-            'zs' : r'$z_{s}$',
-            'u' : r'$u$',
-            'g' : r'$g$',
-            'r' : r'$r$',
-            'i' : r'$i$',
-            'z' : r'$z$'
-        }
-
-        # data = load_data(conf_file, params)
 
 
-        n_cols = len(light_curves.keys())
-        fig = plt.figure(figsize=(n_cols * 3, 4))
-        gs = gridspec.GridSpec(4, n_cols, figure=fig, wspace=0, hspace=0)
-        gs.update(wspace=0, hspace=0)
-        t0_idx = list(config['params'].keys()).index('t0')
-        for idx in range(n_cols*2):
-            idx_half = int(idx/2)
-            band = list(light_curves.keys())[idx_half]
-            t, ym, y, ye = model.model(band, params)
-            if dataname:
-                np.savetxt('{}_{}.dat'.format(dataname,band), np.column_stack((t,ym)))
-            phase = t2phase(t, params[t0_idx], config['period'])
-
-            if idx == 0:
-                ax0 = fig.add_subplot(gs[:3, 0])
-                ax = ax0
-                max_abs_phase = np.max(np.abs(phase))
-                ax0.set_xlim([-1.05*max_abs_phase, 1.05*max_abs_phase])
-            elif idx == 1:
-                ax1 = fig.add_subplot(gs[3:, 0], sharex=ax0)
-                ax = ax1
-            elif idx % 2 == 0 and idx != 0 and idx != 1:
-                ax = fig.add_subplot(gs[:3, idx_half], sharey=ax0, sharex=ax0)
-            else:
-                ax = fig.add_subplot(gs[3:, idx_half], sharey=ax1, sharex=ax0)
-
-            if idx % 2 == 0:
-                ax.errorbar(phase, y*1e3, yerr=ye*1e3, lw=0, elinewidth=1,
-                            marker='.', ms=3, zorder=1, color=band_colours[band])
-                ax.plot(phase, ym*1e3, 'k-', lw=0.7, zorder=2)
-                ax.axhline(0, c='k', ls='-', lw=0.3, zorder=2)
-                ax.tick_params(top=False, bottom=True, left=True, right=True, direction='in')
-                y_mid = (np.max(ax.get_ylim()) + np.min(ax.get_ylim())) / 2
-                plt.setp(ax.get_xticklabels(), visible=False)
-
-            else:
-                ax.errorbar(phase, y*1e3 - ym*1e3, yerr=ye*1e3, lw=0,
-                            elinewidth=1, marker='.', ms=2, zorder=1,
-                            color=band_colours[band])
-                ax.axhline(0, c='k', ls='--', zorder=2)
-                ax.tick_params(top=True, bottom=True, left=True, right=True, direction='in')
-                yabs_max_res = np.max(np.abs(ax.get_ylim()))
-                # ax.set_ylim(ymin=-yabs_max_res, ymax=yabs_max_res)
-                ax.set_ylim(ymin=-0.035, ymax=0.035)
-                # ax.set_xticks([-0.04, 0.00, 0.04])
-            if idx_half != 0:
-                plt.setp(ax.get_yticklabels(), visible=False)
-
-        for axis, band in zip(fig.get_axes()[::2], list(light_curves.keys())):
-            axis.annotate(annotate_str[band], xy=(0, y_mid), color='k', fontsize=18)
-
-        plt.figtext(0.06, 0.5, 'Flux (mJy)', rotation='vertical')
-        plt.figtext(0.47, 0.015, r'Orbital phase, $\phi$')
-        plt.savefig(name, pad_inches=0.1, bbox_inches='tight')
-        plt.close()
-
-    def plot_SED(params, show=True, save=False, name='lightCurves.pdf'):
-
-        ax = plt.subplot()
-        model.plot_SED(ax, params)
-        if save:
-            plt.savefig(name)
-        if show:
-            plt.show()
-        plt.close()
+    def write_print_output(run_name, fchain, namelist):
+        f = open(f"MCMC_runs/{run_name}/{run_name}.out", 'w')
+        lolim, medianPars, uplim = np.percentile(fchain, (16, 50, 84), axis=0)
+        for name, par, lo, hi in zip(namelist, medianPars, lolim, uplim):
+            print(f"{name} = {par} + {hi-par} - {par-lo}")
+            f.write(f"{name} = {par} + {hi-par} - {par-lo}\n")
+        f.close()
 
 
     if args.fit:
@@ -586,69 +369,44 @@ if __name__ == "__main__":
         sampler = m.run_mcmc_save(sampler, p0, args.nprod, state, chain_file)
         fchain = m.flatchain(sampler.chain, ndim, thin=3)
 
-        f = open('MCMC_runs/{}/{}.out'.format(run_name, run_name), 'w')
-        lolim, medianPars, uplim = np.percentile(fchain, (16, 50, 84), axis=0)
-        for name, par, lo, hi in zip(nameList, medianPars, lolim, uplim):
-            print('{} = {} + {} - {}'.format(name, par, hi-par, par-lo))
-            f.write('{} = {} + {} - {}\n'.format(name, par, hi-par, par-lo))
-        f.close()
+        write_print_output(run_name, fchain, nameList)
+        medianPars = np.median(fchain, axis=0)
 
-        fig = m.thumbPlot(fchain, nameList, hist_bin_factor=2)
-        fig.savefig('MCMC_runs/{}/CP_{}.pdf'.format(run_name, run_name))
-        plt.close()
-        for i, name in enumerate(nameList):
-            fig = m.plotchains(sampler.chain, i)
-            fig.savefig('MCMC_runs/{}/Chain_{}_{}.pdf'.format(run_name, run_name, name))
-            plt.close()
-        # import plot_lcs
-        plot(medianPars[:-1], config, 'MCMC_runs/{}/LC_{}.pdf'.format(run_name, run_name),
-             dataname='MCMC_runs/{}/model_{}'.format(run_name, run_name))
-        plot_SED(medianPars[:-1], show=False, save=True,
-                 name='MCMC_runs/{}/SED_{}.pdf'.format(run_name, run_name))
-        plot_model(medianPars[:-1], show=False, save=False,
-                   name='MCMC_runs/{}/LC_{}.pdf'.format(run_name, run_name))
+        # make plots
+        p.plot_CP(fchain, nameList, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
+        p.plot_traces(sampler.chain, nameList, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
+        p.plot_LC(model, medianPars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
+                  dataname=f"MCMC_runs/{run_name}/model_{run_name}")
+        p.plot_SED(model, medianPars[:-1], show=False, save=True,
+                   name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
 
 
     elif args.test:
         print('Model has ln_prob of {}'.format(log_probability(params)))
-        plot_SED(params, show=True, save=False)
-        plot_model(params, show=True, save=False, name='MCMC_runs/test_lc.pdf')
+        p.plot_SED(model, params, show=True, save=False)
+        p.plot_LC(model, params, show=True, save=False)
 
 
     elif args.modelout:
-        for iband, band in enumerate(light_curves.keys()):
-            t, _, y, ye, _, _ = np.loadtxt(model.lightcurves[band]).T
-            ym, _, _, _ = model.get_value(band)
+        for band in enumerate(light_curves.keys()):
+            t, ym, y, ye = model.model(band, params)
             model_out = np.vstack((t, ym, y, ye)).T
             np.savetxt('{}_model_lc_{}.dat'.format(run_name, band), model_out)
 
     else:
         chain_file = 'MCMC_runs/{}/{}'.format(run_name, chain_fname)
-        chain = m.readchain(chain_file)[10000:, :, :]
+        chain = m.readchain(chain_file)[1000:, :, :]
         fchain = m.flatchain(chain, ndim+1)
         print(chain.shape)
-        print(fchain.shape)
-        namelist = nameList.append('ln_prob')
+        nameList.append('ln_prob')
         medianPars = np.median(fchain, axis=0)
 
-        f = open('MCMC_runs/{}/{}.out'.format(run_name, run_name), 'w')
-        lolim, medianPars, uplim = np.percentile(fchain, (16, 50, 84), axis=0)
-        for name, par, lo, hi in zip(nameList, medianPars, lolim, uplim):
-            print('{} = {} + {} - {}'.format(name, par, hi-par, par-lo))
-            f.write('{} = {} + {} - {}\n'.format(name, par, hi-par, par-lo))
-        f.close()
+        write_print_output(run_name, fchain, nameList) # print & save output
 
-        fig = m.thumbPlot(fchain, nameList, hist_bin_factor=2)
-        fig.savefig('MCMC_runs/{}/CP_{}.pdf'.format(run_name, run_name))
-        plt.close()
-        for i, name in enumerate(nameList):
-            fig = m.plotchains(chain, i)
-            fig.savefig('MCMC_runs/{}/Chain_{}_{}.pdf'.format(run_name, run_name, name))
-            plt.close()
-        # import plot_lcs
-        plot(medianPars[:-1], config, 'MCMC_runs/{}/LC_{}.pdf'.format(run_name, run_name),
-             dataname='MCMC_runs/{}/model_{}'.format(run_name, run_name))
-        plot_SED(medianPars[:-1], show=False, save=True,
-                 name='MCMC_runs/{}/SED_{}.pdf'.format(run_name, run_name))
-        plot_model(medianPars[:-1], show=False, save=False,
-                   name='MCMC_runs/{}/LC_{}.pdf'.format(run_name, run_name))
+        # make plots
+        p.plot_traces(chain, nameList, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
+        p.plot_CP(fchain, nameList, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
+        p.plot_LC(model, medianPars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
+                dataname=f"MCMC_runs/{run_name}/model_{run_name}")
+        p.plot_SED(model, medianPars[:-1], show=False, save=True,
+                 name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
