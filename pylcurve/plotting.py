@@ -121,8 +121,8 @@ def plot_SED(model, params, show=True, save=False, name='SED.pdf'):
         ax0.errorbar(model.cam.eff_wl[band].value, wdwarf*1e3,
                     yerr=model.flux_uncertainty[band]*wdwarf*1e3, c='k',
                     marker='.', elinewidth=1)
-        ax0.scatter(model.cam.eff_wl[band], wd_model_flux*1e3, c='r', marker='.')
-        ax1.errorbar(model.cam.eff_wl[band], wdwarf*1e3 - wd_model_flux*1e3,
+        ax0.scatter(model.cam.eff_wl[band].value, wd_model_flux*1e3, c='r', marker='.')
+        ax1.errorbar(model.cam.eff_wl[band].value, wdwarf*1e3 - wd_model_flux*1e3,
                      yerr=model.flux_uncertainty[band]*wdwarf*1e3, c='k',
                      marker='.', elinewidth=1)
         ax1.axhline
