@@ -415,7 +415,8 @@ if __name__ == "__main__":
         # make plots
         p.plot_traces(chain, nameList, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
         p.plot_CP(fchain, nameList, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
-        p.plot_LC(model, medianPars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
-                dataname=f"MCMC_runs/{run_name}/model_{run_name}")
+        p.plot_LC(model, medianPars[:-1], show=False, save=True,
+                  name=f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
+                  dataname=f"MCMC_runs/{run_name}/model_{run_name}")
         p.plot_SED(model, medianPars[:-1], show=False, save=True,
-                 name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
+                   name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
