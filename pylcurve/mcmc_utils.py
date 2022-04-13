@@ -232,7 +232,7 @@ def readchain(file, nskip=0, thin=1):
     nwalkers = int(data[:, 0].max()+1)
     nprod = int(data.shape[0]/nwalkers)
     npars = data.shape[1] - 1  # first is walker ID, last is ln_prob
-    chain = np.reshape(data[:, 1:], (nwalkers, nprod, npars), order='C')
+    chain = np.reshape(data[:, 1:], (nprod, nwalkers, npars), order='C')
     return chain
 
 
