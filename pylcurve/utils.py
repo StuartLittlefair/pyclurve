@@ -23,7 +23,7 @@ def get_Tbb(teff, logg, band, instrument='ucam',
     models (star_type='WD').
     """
     if star_type == 'WD' and source == 'Claret':
-        T_bb = float(bb_interpolator['WD_Claret'][instrument][band](teff, logg))
+        T_bb = float(bb_interpolator['WD']['Claret'][band](teff, logg))
     elif star_type == 'WD' and source == 'Bergeron':
         T_bb = float(bb_interpolator['WD'][instrument][band](teff, logg))
     else:
