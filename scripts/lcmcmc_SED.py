@@ -50,6 +50,10 @@ class EclipseLC(Model):
     
 
     def set_core_parameters(self):
+        """
+        Sets lcurve's computational parameters from those specified
+        in the config file.
+        """
         self.core_pars = dict()
         self.core_pars['period'] = self.config['period']
         self.core_pars['tperiod'] = self.config['period']
@@ -67,6 +71,11 @@ class EclipseLC(Model):
 
     
     def vary_model_res(self, model_pars):
+        """
+        Varies the resolution of lcurve's stellar grids to try and blur out any
+        systematic grid effects that could cause issues for the inclination
+        and radii.
+        """
         model_pars['nlat1f'] = np.random.randint(self.core_pars['nlat1f'] - 5,
                                                  self.core_pars['nlat1f'] + 6)
         model_pars['nlat1c'] = np.random.randint(self.core_pars['nlat1c'] - 5,
