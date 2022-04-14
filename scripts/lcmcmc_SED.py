@@ -120,11 +120,21 @@ class EclipseLC(Model):
         ----------
         band : string
             SDSS/HiPERCAM bandpass
+        
+        factor : float
+            Factor to scale radius of secondary star
 
         Returns
         -------
         ym : np.ndarray
-            model values
+            Model light curve flux
+
+        wdwarf : float
+            WD contribution to light curve
+
+        wd_model_flux : float
+            Theoretical WD flux for model parameters
+
         """
         # setup LCURVE file for this band
         # lcurve_model = Lcurve(self.config['model_file'])
@@ -224,6 +234,8 @@ class EclipseLC(Model):
             list of parameter values
         band : string
             SDSS/HiPERCAM band
+        factor : float
+            Factor to scale radius of secondary star by
         """
         self.set_parameter_vector(params)
         t, _, y, ye, w, _ = np.loadtxt(self.lightcurves[band]).T
@@ -255,6 +267,8 @@ class EclipseLC(Model):
             list of parameter values
         band : string
             SDSS/HiPERCAM band
+        factor : float
+            Factor to scale radius of secondary star by
         """
         # _, _, y, ye, w, _ = np.loadtxt(self.lightcurves[band]).T
         chisq = self.chisq(params, band, factor=factor)
@@ -270,7 +284,12 @@ if __name__ == "__main__":
     import argparse
     from ruamel.yaml import YAML
     os.nice(5)
-    
+
+    folders = ['config_files', 'light_curves', 'MCMC_runs', 'model_files']    
+    for folder in folders:
+        if not os.path.isdir(folder):
+            os.makedirs(folder)
+
     conf_file = '1712af_CO_corr.yaml'
 
 
