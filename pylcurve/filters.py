@@ -18,7 +18,7 @@ class filters:
                  fpath=resource_filename('pylcurve', 'data/filter_profiles/')):
 
         choices = ['hcam', 'ucam', 'ucam_s', 'ucam_super', 'ucam_sloan',
-                   'ucam_old', 'uspec', 'sdss', 'usno40', 'gaiaEDR3', '2MASS']
+                   'ucam_old', 'uspec', 'sdss', 'usno40', 'panstarrs', 'gaiaEDR3', '2MASS']
         self.inst = instrument
         if self.inst not in choices:
             raise ValueError('"{}" is not a valid instrument'
