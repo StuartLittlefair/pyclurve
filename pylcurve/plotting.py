@@ -135,7 +135,8 @@ def plot_SED(model, params, show=True, save=False, name='SED.pdf'):
     ax1.tick_params(top=True, bottom=True, left=True, right=True, direction='in')
     ax0.set_ylim(bottom=0)
     ax0.set_xlim(3300, 9500)
-    ax1.set_ylim(-0.03, 0.03)
+    yabs_max = abs(max(ax1.get_ylim(), key=abs))
+    ax1.set_ylim(-yabs_max, yabs_max)
     plt.setp(ax0.get_xticklabels(), visible=False)
     if save:
         plt.savefig(name)
@@ -168,7 +169,7 @@ def plot_CP(fchain, namelist, name='CP.pdf', **kwargs):
     plt.close()
 
 
-def plot_traces(chain, namelist, name="trace.pdf", **kwargs):
+def plot_traces(chain, namelist, name="trace.pdf", dpi=300, **kwargs):
     mpl.rcParams['font.size'] = 8
     label_dict = {'t1': r'$\rm{T_{1}~(K)}$',
                   't2': r'$\rm{T_{2}~(K)}$',
@@ -199,5 +200,5 @@ def plot_traces(chain, namelist, name="trace.pdf", **kwargs):
     axes[-1].set_xlabel('step number')
     plt.subplots_adjust(hspace=0.05)
     fig.align_ylabels(axes)
-    fig.savefig(name, pad_inches=0.1, bbox_inches='tight')
+    fig.savefig(name, pad_inches=0.1, bbox_inches='tight', dpi=dpi)
     plt.close()
