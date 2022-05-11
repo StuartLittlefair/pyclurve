@@ -161,9 +161,10 @@ def plot_CP(fchain, namelist, name='CP.pdf', **kwargs):
                   'ln_prob': r'$\rm{ln}(p)$'
                   }
     labels = [label_dict[name] if name in label_dict else name for name in namelist]
-    idx_t0 = namelist.index('t0')
     fchain_plot = fchain.copy()
-    fchain_plot[:, idx_t0] = (fchain_plot[:,idx_t0] - np.median(fchain_plot[:,idx_t0])) * 1e5
+    if 't0' in namelist:
+        idx_t0 = namelist.index('t0')
+        fchain_plot[:, idx_t0] = (fchain_plot[:,idx_t0] - np.median(fchain_plot[:,idx_t0])) * 1e5
     fig = triangle.corner(fchain_plot, labels=labels, hist_bin_factor=2, label_kwargs={'fontsize': 14}, **kwargs)
     fig.savefig(name)
     plt.close()
