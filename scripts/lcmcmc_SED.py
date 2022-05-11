@@ -112,6 +112,74 @@ class EclipseLC(Model):
             return self.slope_z
 
 
+    def set_model(self, band, factor=1.0):
+        """"
+        Set model from given parameters
+
+        Parameters
+        ----------
+        band : string
+            SDSS/HiPERCAM bandpass
+        
+        factor : float
+            Factor to scale radius of secondary star
+
+        """
+        lcurve_pars = dict()
+        q = self.m2/self.m1
+
+        # ENTER chosen mass-radius relations for both stars
+        self.r1 = utils.get_radius(self.m1, self.t1, star_type=self.config['wd_core_comp'])
+        self.r2 = utils.get_radius(self.m2, star_type='MS',
+                                   relation=self.config['secondary_mr'], factor=factor)
+
+        self.log_g1 = utils.log_g(self.m1, self.r1)
+        self.log_g2 = utils.log_g(self.m2, self.r2)
+        self.a = utils.separation(self.m1, self.m2, self.config['period'])
+
+        if self.config['irr_infl'] == True:
+            self.r2 = utils.irradiate(self.t1, self.r1, self.t2, self.r2, self.a)
+
+        lcurve_pars['t1'] = utils.get_Tbb(self.t1, self.log_g1, band, star_type='WD',
+                                          source=self.config['wd_model'],
+                                          instrument=self.config['filter_system'])
+        lcurve_pars['t2'] = utils.get_Tbb(self.t2, self.log_g2, band, star_type='MS',
+                                          instrument=self.config['filter_system'])
+        # lcurve_pars['t2'] = self.t2_free(band)
+        lcurve_pars['r1'] = self.r1/self.a  # scale to separation units
+        lcurve_pars['r2'] = utils.Rva_to_Rl1(q, self.r2/self.a)  # scale and correct
+        lcurve_pars['t0'] = self.t0
+        lcurve_pars['period'] = self.config['period']
+        lcurve_pars['tperiod'] = self.config['period']
+        lcurve_pars['iangle'] = self.incl
+        lcurve_pars['q'] = q
+        # lcurve_pars['slope'] = self.slope(band)
+        self.vary_model_res(lcurve_pars)
+        if not self.config['fit_beta']:
+            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, self.log_g2, band)
+            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), self.log_g2, band)
+        else:
+            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, self.log_g2, band, self.beta)
+            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), self.log_g2, band, self.beta)
+
+        lcurve_pars['wavelength'] = self.cam.eff_wl[band].to_value(u.nm)
+        lcurve_pars['phase1'] = (np.arcsin(lcurve_pars['r1']
+                                           + lcurve_pars['r2'])
+                                           / (2 * np.pi))+0.001
+        lcurve_pars['phase2'] = 0.5 - lcurve_pars['phase1']
+
+        self.lcurve_model.set(lcurve_pars)
+        # self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=self.log_g1, band=band,
+        #                                 star_type_1='WD', teff_2=self.t2_free(band),
+        #                                 logg_2=self.log_g2, star_type_2='MS'))
+        self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=self.log_g1, band=band,
+                                             star_type_1='WD', teff_2=self.t2,
+                                             logg_2=self.log_g2, star_type_2='MS'))
+
+        if not self.lcurve_model.ok():
+            raise ValueError('invalid parameter combination')
+        
+
     def get_value(self, band, factor=1.0):
         """
         Calculate lightcurve
@@ -136,64 +204,10 @@ class EclipseLC(Model):
             Theoretical WD flux for model parameters
 
         """
-        # setup LCURVE file for this band
-        # lcurve_model = Lcurve(self.config['model_file'])
-        lcurve_pars = dict()
-        q = self.m2/self.m1
-
-        # ENTER chosen mass-radius relations for both stars
-        self.r1 = utils.get_radius(self.m1, self.t1, star_type=self.config['wd_core_comp'])
-        self.r2 = utils.get_radius(self.m2, star_type='MS',
-                                   relation=self.config['secondary_mr'], factor=factor)
-
-        log_g1 = utils.log_g(self.m1, self.r1)
-        log_g2 = utils.log_g(self.m2, self.r2)
-        a = utils.separation(self.m1, self.m2, self.config['period'])
-
-        if self.config['irr_infl'] == True:
-            self.r2 = utils.irradiate(self.t1, self.r1, self.t2, self.r2, a)
-
-        wd_model_flux = utils.integrate_disk(self.t1, log_g1, self.r1,
+        self.set_model(band, factor)
+        wd_model_flux = utils.integrate_disk(self.t1, self.log_g1, self.r1,
                                              self.parallax, self.ebv, band,
                                              self.config['wd_model'])
-        lcurve_pars['t1'] = utils.get_Tbb(self.t1, log_g1, band, star_type='WD',
-                                          source=self.config['wd_model'],
-                                          instrument=self.config['filter_system'])
-        lcurve_pars['t2'] = utils.get_Tbb(self.t2, log_g2, band, star_type='MS',
-                                          instrument=self.config['filter_system'])
-        # lcurve_pars['t2'] = self.t2_free(band)
-        lcurve_pars['r1'] = self.r1/a  # scale to separation units
-        lcurve_pars['r2'] = utils.Rva_to_Rl1(q, self.r2/a)  # scale and correct
-        lcurve_pars['t0'] = self.t0
-        lcurve_pars['period'] = self.config['period']
-        lcurve_pars['tperiod'] = self.config['period']
-        lcurve_pars['iangle'] = self.incl
-        lcurve_pars['q'] = q
-        # lcurve_pars['slope'] = self.slope(band)
-        self.vary_model_res(lcurve_pars)
-        if not self.config['fit_beta']:
-            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, log_g2, band)
-            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), log_g2, band)
-        else:
-            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, log_g2, band, self.beta)
-            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), log_g2, band, self.beta)
-
-        lcurve_pars['wavelength'] = self.cam.eff_wl[band].to_value(u.nm)
-        lcurve_pars['phase1'] = (np.arcsin(lcurve_pars['r1']
-                                           + lcurve_pars['r2'])
-                                           / (2 * np.pi))+0.001
-        lcurve_pars['phase2'] = 0.5 - lcurve_pars['phase1']
-
-        self.lcurve_model.set(lcurve_pars)
-        # self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=log_g1, band=band,
-        #                                 star_type_1='WD', teff_2=self.t2_free(band),
-        #                                 logg_2=log_g2, star_type_2='MS'))
-        self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=log_g1, band=band,
-                                             star_type_1='WD', teff_2=self.t2,
-                                             logg_2=log_g2, star_type_2='MS'))
-
-        if not self.lcurve_model.ok():
-            raise ValueError('invalid parameter combination')
         ym, wdwarf = self.lcurve_model(self.lightcurves[band])
 
         return ym, wdwarf, wd_model_flux
@@ -277,8 +291,10 @@ class EclipseLC(Model):
         return log_likelihood
 
 
-    def write_model(self, params, band, fname):
-        self.set_parameter_vector(params)
+    def write_model(self, band, fname):
+        self.set_model(band)
+        self.lcurve_model.write(fname)
+
 
 if __name__ == "__main__":
     import argparse
@@ -356,6 +372,13 @@ if __name__ == "__main__":
             val += model.log_probability(params, band, factor)
         val += model.log_prior()
         return val
+
+    
+    def write_models(params, fname):
+        model.set_parameter_vector(params)
+        for band in light_curves.keys():
+            fname_out = f"{fname}_{band}.mod"
+            model.write_model(band, fname_out)
 
 
     def write_print_output(run_name, fchain, namelist):
@@ -439,3 +462,4 @@ if __name__ == "__main__":
                   dataname=f"MCMC_runs/{run_name}/model_{run_name}")
         p.plot_SED(model, medianPars[:-1], show=False, save=True,
                    name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
+        write_models(medianPars, fname="MCMC_runs/{run_name}/{run_name}")
