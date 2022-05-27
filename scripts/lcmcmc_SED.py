@@ -1,5 +1,5 @@
 import emcee
-from multiprocessing import Pool
+from multiprocessing import Pool, cpu_count
 import numpy as np
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -137,15 +137,24 @@ class EclipseLC(Model):
         self.log_g2 = utils.log_g(self.m2, self.r2)
         self.a = utils.separation(self.m1, self.m2, self.config['period'])
 
+        if self.config['free_t2'] == True:
+            self.t2 = self.t2_free(band)
+            t2 = self.t2_g
+        else:
+            t2 = self.t2
+
         if self.config['irr_infl'] == True:
-            self.r2 = utils.irradiate(self.t1, self.r1, self.t2, self.r2, self.a)
+            self.r2 = utils.irradiate(self.t1, self.r1, t2, self.r2, self.a)
 
         lcurve_pars['t1'] = utils.get_Tbb(self.t1, self.log_g1, band, star_type='WD',
                                           source=self.config['wd_model'],
                                           instrument=self.config['filter_system'])
-        lcurve_pars['t2'] = utils.get_Tbb(self.t2, self.log_g2, band, star_type='MS',
-                                          instrument=self.config['filter_system'])
-        # lcurve_pars['t2'] = self.t2_free(band)
+        if self.config['free_t2'] == False:
+            lcurve_pars['t2'] = utils.get_Tbb(self.t2, self.log_g2, band, star_type='MS',
+                                            instrument=self.config['filter_system'])
+        else:
+            lcurve_pars['t2'] = self.t2
+
         lcurve_pars['r1'] = self.r1/self.a  # scale to separation units
         lcurve_pars['r2'] = utils.Rva_to_Rl1(q, self.r2/self.a)  # scale and correct
         lcurve_pars['t0'] = self.t0
@@ -156,11 +165,9 @@ class EclipseLC(Model):
         # lcurve_pars['slope'] = self.slope(band)
         self.vary_model_res(lcurve_pars)
         if not self.config['fit_beta']:
-            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, self.log_g2, band)
-            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), self.log_g2, band)
+            lcurve_pars['gravity_dark2'] = utils.get_gdc(t2, self.log_g2, band)
         else:
-            lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2, self.log_g2, band, self.beta)
-            # lcurve_pars['gravity_dark2'] = utils.get_gdc(self.t2_free(band), self.log_g2, band, self.beta)
+            lcurve_pars['gravity_dark2'] = utils.get_gdc(t2, self.log_g2, band, self.beta)
 
         lcurve_pars['wavelength'] = self.cam.eff_wl[band].to_value(u.nm)
         lcurve_pars['phase1'] = (np.arcsin(lcurve_pars['r1']
@@ -173,7 +180,7 @@ class EclipseLC(Model):
         #                                 star_type_1='WD', teff_2=self.t2_free(band),
         #                                 logg_2=self.log_g2, star_type_2='MS'))
         self.lcurve_model.set(utils.get_ldcs(self.t1, logg_1=self.log_g1, band=band,
-                                             star_type_1='WD', teff_2=self.t2,
+                                             star_type_1='WD', teff_2=t2,
                                              logg_2=self.log_g2, star_type_2='MS'))
 
         if not self.lcurve_model.ok():
@@ -261,7 +268,7 @@ class EclipseLC(Model):
         else:
             try:
                 ym, wdwarf, wd_flux = self.get_value(band, factor=factor)
-                chisq = np.sum(((y - ym)/ye)**2)
+                chisq = np.sum(w * ((y - ym)/ye)**2)
                 chisq += ((wdwarf - wd_flux)**2 / (wdwarf*self.flux_uncertainty[band])**2)
             except ValueError as err:
                 # invalid lcurve params
@@ -306,7 +313,7 @@ if __name__ == "__main__":
         if not os.path.isdir(folder):
             os.makedirs(folder)
 
-    conf_file = '1712af_CO_corr.yaml'
+    conf_file = 'example.yaml'
 
 
     # parser.add_argument('--conf', '-c', action='store', default=conf_file)
@@ -328,6 +335,10 @@ if __name__ == "__main__":
     parser.add_argument('--nthreads', action='store', type=int, default=run_settings['n_cores'])
     args = parser.parse_args()
 
+    # make sure some CPUs are left free.
+    n_cpu = cpu_count()
+    if args.nthreads >= n_cpu - 1:
+        args.nthreads = n_cpu - 2
 
     run_name = config['run_name']
     chain_fname = run_name + '.chain'
@@ -374,6 +385,31 @@ if __name__ == "__main__":
         return val
 
     
+    def inf_to_small(x):
+        if x == -np.inf:
+            return -1e20
+        else:
+            return x
+
+
+    def min_func(x):
+        return -inf_to_small(log_probability(x))
+
+
+    def fit_start_pos(x0, *args, **kwargs):
+        bounds = [tuple(value) for value in config['param_bounds'].values()]
+        print("Fitting start position...")
+        soln = minimize(min_func, np.array(x0), method='Nelder-Mead', bounds=bounds, *args, **kwargs)
+        return soln.x
+
+    
+    def clip_lnprob(chain, clip_margin=100):
+        med = np.median(chain, axis=(0,1))
+        idx = np.argwhere(np.min(chain[:,:,-1], axis=0) < med[-1] - clip_margin)
+        chain = np.delete(chain, idx.flatten(), axis=1)
+        return chain
+
+    
     def write_models(params, fname):
         model.set_parameter_vector(params)
         for band in light_curves.keys():
@@ -388,6 +424,29 @@ if __name__ == "__main__":
             print(f"{name} = {par} + {hi-par} - {par-lo}")
             f.write(f"{name} = {par} + {hi-par} - {par-lo}\n")
         f.close()
+
+    
+    def mcmc_results(chain_file, par_names, run_name, burn_in=1000, thin=1, measure='median'):
+        chain = m.readchain(chain_file)[burn_in:, :, :]
+        par_names.append('ln_prob')
+        ndim = chain.shape[-1]
+        fchain = m.flatchain(chain, ndim, thin=thin)
+
+        if measure == 'median':
+            Pars = np.median(fchain, axis=0)
+        elif measure == 'best':
+            Pars = fchain[np.argmax(fchain[:,-1]), :]
+        
+        write_print_output(run_name, fchain, par_names)
+
+        # make plots
+        p.plot_traces(chain, par_names, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
+        p.plot_CP(fchain, par_names, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
+        p.plot_LC(model, Pars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
+                  dataname=f"MCMC_runs/{run_name}/model_{run_name}")
+        p.plot_SED(model, Pars[:-1], show=False, save=True,
+                   name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
+        write_models(Pars[:-1], fname=f"MCMC_runs/{run_name}/{run_name}")
 
 
     if args.fit:
@@ -404,6 +463,9 @@ if __name__ == "__main__":
             model.set_parameter_vector(params)
             return model.log_prior()
 
+        # fit for start position close to best log_prob
+        params = fit_start_pos(np.array(params), tol=1)
+
         # amount to scatter initial ball of walkers
         scatter = 0.001*np.ones_like(params)
         # small scatter for t0 and period
@@ -416,27 +478,14 @@ if __name__ == "__main__":
         if args.nburn != 0:
             p0, prob, state = m.run_burnin(sampler, p0, args.nburn)
             sampler.reset()
-
         sampler = m.run_mcmc_save(sampler, p0, args.nprod, state, chain_file)
-        fchain = m.flatchain(sampler.chain, ndim, thin=3)
 
-        write_print_output(run_name, fchain, nameList)
-        medianPars = np.median(fchain, axis=0)
-
-        # make plots
-        p.plot_CP(fchain, nameList, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
-        p.plot_traces(sampler.chain, nameList, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
-        p.plot_LC(model, medianPars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
-                  dataname=f"MCMC_runs/{run_name}/model_{run_name}")
-        p.plot_SED(model, medianPars[:-1], show=False, save=True,
-                   name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
-
+        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median') # sampler.get_chain()
 
     elif args.test:
         print('Model has ln_prob of {}'.format(log_probability(params)))
         p.plot_SED(model, params, show=True, save=False)
         p.plot_LC(model, params, show=True, save=False)
-
 
     elif args.modelout:
         for band in enumerate(light_curves.keys()):
@@ -446,20 +495,4 @@ if __name__ == "__main__":
 
     else:
         chain_file = 'MCMC_runs/{}/{}'.format(run_name, chain_fname)
-        chain = m.readchain(chain_file)[1000:, :, :]
-        fchain = m.flatchain(chain, ndim+1)
-        print(chain.shape)
-        nameList.append('ln_prob')
-        medianPars = np.median(fchain, axis=0)
-
-        write_print_output(run_name, fchain, nameList) # print & save output
-
-        # make plots
-        p.plot_traces(chain, nameList, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
-        p.plot_CP(fchain, nameList, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
-        p.plot_LC(model, medianPars[:-1], show=False, save=True,
-                  name=f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
-                  dataname=f"MCMC_runs/{run_name}/model_{run_name}")
-        p.plot_SED(model, medianPars[:-1], show=False, save=True,
-                   name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
-        write_models(medianPars, fname="MCMC_runs/{run_name}/{run_name}")
+        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median')
