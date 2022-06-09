@@ -442,7 +442,8 @@ if __name__ == "__main__":
         # make plots
         p.plot_traces(chain, par_names, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
         p.plot_CP(fchain, par_names, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
-        p.plot_LC(model, Pars[:-1], f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
+        p.plot_LC(model, Pars[:-1], show=True, save=True,
+                  name=f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
                   dataname=f"MCMC_runs/{run_name}/model_{run_name}")
         p.plot_SED(model, Pars[:-1], show=False, save=True,
                    name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
@@ -464,21 +465,30 @@ if __name__ == "__main__":
             return model.log_prior()
 
         # fit for start position close to best log_prob
-        params = fit_start_pos(np.array(params), tol=1)
+        if not os.path.exists(chain_file):
+            params = fit_start_pos(np.array(params), tol=1)
+            # amount to scatter initial ball of walkers
+            scatter = 0.001*np.ones_like(params)
+            # small scatter for t0
+            scatter[nameList.index('t0')] = 1.0e-12
+            p0 = m.initialise_walkers(params, scatter, nwalkers, log_prior)
+            nsteps=0
+        else:
+            chain = m.readchain(chain_file)
+            nsteps = chain.shape[0]
+            nwalkers_chain = chain.shape[1]
+            if args.nwalkers != nwalkers_chain:
+                raise ValueError(f"Walker number mismatch. Existing chain file has {nwalkers_chain} walkers but {args.nwalkers} walkers were requested.")
+            args.nprod -= nsteps
+            p0 = chain[-1, :, :-1]
 
-        # amount to scatter initial ball of walkers
-        scatter = 0.001*np.ones_like(params)
-        # small scatter for t0 and period
-        scatter[nameList.index('t0')] = 1.0e-12
-        # scatter[9] = 1.0e-9
         pool = Pool(args.nthreads)
-        p0 = m.initialise_walkers(params, scatter, nwalkers, log_prior)
         sampler = emcee.EnsembleSampler(nwalkers, ndim, log_probability, pool=pool)
         state = None
-        if args.nburn != 0:
+        if args.nburn > 0:
             p0, prob, state = m.run_burnin(sampler, p0, args.nburn)
             sampler.reset()
-        sampler = m.run_mcmc_save(sampler, p0, args.nprod, state, chain_file)
+        sampler = m.run_mcmc_save(sampler, p0, args.nprod, state, chain_file, start_step=nsteps)
 
         mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median') # sampler.get_chain()
 

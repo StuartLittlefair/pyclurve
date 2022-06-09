@@ -179,17 +179,18 @@ def run_burnin(sampler, startPos, nSteps, store=False, progress=True):
     return pos, prob, state
 
 
-def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, **kwargs):
+def run_mcmc_save(sampler, startPos, nSteps, rState, file, progress=True, start_step=0, **kwargs):
     """
     Runs an MCMC chain with emcee, and saves steps to a file
     """
     # open chain save file
     if file:
-        f = open(file, "w")
+        f = open(file, "a")
         f.close()
     iStep = 0
     if progress:
-        bar = tqdm(total=nSteps)
+        bar = tqdm(total=nSteps+start_step)
+        bar.update(start_step)
     for state in sampler.sample(startPos, iterations=nSteps,
                                 rstate0=rState, store=True, **kwargs):
         # print(state.blobs)
