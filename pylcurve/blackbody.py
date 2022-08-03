@@ -30,20 +30,30 @@ def build_interpolator(BB_table, bands):
         interpolator[band] = LinearNDInterpolator(coords_in, coords_out, rescale=True)
     return interpolator
 
-
+wd_models = ['Koester', 'Bergeron']
+ms_models = ['PHOENIX-HiRes', 'BT-SETTL', 'BT-SETTL-CIFIST', 'old']
 instruments = ['hcam', 'ucam', 'ucam_sloan', 'sdss']
-for instrument in instruments:
-    cam = filters(instrument)
+for model in ms_models:
+    ms_instr_interpolator = dict()
+    for instrument in instruments:
+        cam = filters(instrument)
+        tab_MS = Table.read(fpath + f"Tms_to_Tbb_{model}_{instrument}.dat", format='ascii.tab')
+        ms_instr_interpolator[instrument] = build_interpolator(tab_MS, cam.bands)
+    ms_interpolator[model] = ms_instr_interpolator
 
-    tab_MS = Table.read(fpath + 'Tms_to_Tbb_{}.dat'.format(instrument), format='ascii.tab')
-    ms_interpolator[instrument] = build_interpolator(tab_MS, cam.bands)
-
-    tab_WD = Table.read(fpath + 'Twd_to_Tbb_{}.dat'.format(instrument), format='ascii.tab')
-    wd_interpolator[instrument] = build_interpolator(tab_WD, cam.bands)
-
+for model in wd_models:
+    wd_instr_interpolator = dict()
+    for instrument in instruments:
+        cam = filters(instrument)
+        tab_WD = Table.read(fpath + f"Twd_to_Tbb_{model}_{instrument}.dat", format='ascii.tab')
+        wd_instr_interpolator[instrument] = build_interpolator(tab_WD, cam.bands)
+    wd_interpolator[model] = wd_instr_interpolator
 hcam = filters()
-tab_WD = Table.read(fpath + 'Twd_to_Tbb_Claret_x2.dat', format='ascii.tab')
-wd_interpolator['Claret'] = build_interpolator(tab_WD, hcam.bands)
+tab_WD = Table.read(fpath + 'Twd_to_Tbb_Claret_hcam.dat', format='ascii.tab')
+wd_instr_interpolator = dict()
+wd_instr_interpolator['hcam'] = build_interpolator(tab_WD, hcam.bands)
+wd_instr_interpolator['ucam'] = build_interpolator(tab_WD, hcam.bands)
+wd_interpolator['Claret'] = wd_instr_interpolator
 
 bb_interpolator['MS'] = ms_interpolator
 bb_interpolator['WD'] = wd_interpolator

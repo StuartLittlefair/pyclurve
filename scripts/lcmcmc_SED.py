@@ -147,11 +147,12 @@ class EclipseLC(Model):
             self.r2 = utils.irradiate(self.t1, self.r1, t2, self.r2, self.a)
 
         lcurve_pars['t1'] = utils.get_Tbb(self.t1, self.log_g1, band, star_type='WD',
-                                          source=self.config['wd_model'],
+                                          model=self.config['wd_model'],
                                           instrument=self.config['filter_system'])
         if self.config['free_t2'] == False:
             lcurve_pars['t2'] = utils.get_Tbb(self.t2, self.log_g2, band, star_type='MS',
-                                            instrument=self.config['filter_system'])
+                                              model=self.config['ms_model'],
+                                              instrument=self.config['filter_system'])
         else:
             lcurve_pars['t2'] = self.t2
 
@@ -214,7 +215,8 @@ class EclipseLC(Model):
         self.set_model(band, factor)
         wd_model_flux = utils.integrate_disk(self.t1, self.log_g1, self.r1,
                                              self.parallax, self.ebv, band,
-                                             self.config['wd_model'])
+                                             self.config['wd_model'],
+                                             self.config['filter_system'])
         ym, wdwarf = self.lcurve_model(self.lightcurves[band])
 
         return ym, wdwarf, wd_model_flux
@@ -426,8 +428,10 @@ if __name__ == "__main__":
         f.close()
 
     
-    def mcmc_results(chain_file, par_names, run_name, burn_in=1000, thin=1, measure='median'):
+    def mcmc_results(chain_file, par_names, run_name, burn_in=1000, clip=None, thin=1, measure='median', show=False):
         chain = m.readchain(chain_file)[burn_in:, :, :]
+        if clip:
+            chain = clip_lnprob(chain=chain, clip_margin=clip)
         par_names.append('ln_prob')
         ndim = chain.shape[-1]
         fchain = m.flatchain(chain, ndim, thin=thin)
@@ -442,10 +446,10 @@ if __name__ == "__main__":
         # make plots
         p.plot_traces(chain, par_names, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
         p.plot_CP(fchain, par_names, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
-        p.plot_LC(model, Pars[:-1], show=True, save=True,
+        p.plot_LC(model, Pars[:-1], show=show, save=True,
                   name=f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
                   dataname=f"MCMC_runs/{run_name}/model_{run_name}")
-        p.plot_SED(model, Pars[:-1], show=False, save=True,
+        p.plot_SED(model, Pars[:-1], show=show, save=True,
                    name=f"MCMC_runs/{run_name}/SED_{run_name}.pdf")
         write_models(Pars[:-1], fname=f"MCMC_runs/{run_name}/{run_name}")
 
@@ -490,7 +494,7 @@ if __name__ == "__main__":
             sampler.reset()
         sampler = m.run_mcmc_save(sampler, p0, args.nprod, state, chain_file, start_step=nsteps)
 
-        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median') # sampler.get_chain()
+        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median', show=False)
 
     elif args.test:
         print('Model has ln_prob of {}'.format(log_probability(params)))
@@ -505,4 +509,4 @@ if __name__ == "__main__":
 
     else:
         chain_file = 'MCMC_runs/{}/{}'.format(run_name, chain_fname)
-        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median')
+        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median', show=True)
