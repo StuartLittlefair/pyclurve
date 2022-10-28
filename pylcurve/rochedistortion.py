@@ -2,7 +2,7 @@ import numpy as np
 from scipy.interpolate import LinearNDInterpolator
 from pkg_resources import resource_filename
 
-fname = resource_filename('pylcurve', 'data/roche_conversion/roche_grid.dat')
+fname = resource_filename('pylcurve', 'data/roche_conversion/roche_grid_new_corr.dat')
 
 q, r2_a_L1, r2_va_a = np.loadtxt(fname, unpack=True)
 
