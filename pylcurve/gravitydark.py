@@ -1,7 +1,7 @@
 from astropy.io import ascii
 from pkg_resources import resource_filename
 from scipy.interpolate import LinearNDInterpolator, interp1d
-from filters import filters
+from .filters import filters
 from glob import glob
 
 

@@ -11,24 +11,26 @@ from .massradius import mr_interpolator
 from .rochedistortion import roche_interpolator
 from dust_extinction.parameter_averages import F19
 
-
 bb = BlackBody()
 
 
-def get_Tbb(teff, logg, band, instrument='ucam',
-            star_type='WD', source='Claret'):
+def get_Tbb(teff, logg, band, instrument='ucam', star_type='WD', model='Claret'):
     """
     Interpolates Teff to Tbb tables for a given filter band
     ('u', 'g', 'r', 'i', or 'z') for PHOENIX main-sequence
     models (star_type='MS') or Bergeron & Gianninas white dwarf
     models (star_type='WD').
     """
-    if star_type == 'WD' and source == 'Claret':
-        T_bb = float(bb_interpolator['WD_Claret'][instrument][band](teff, logg))
-    elif star_type == 'WD' and source == 'Bergeron':
-        T_bb = float(bb_interpolator['WD'][instrument][band](teff, logg))
-    else:
-        T_bb = float(bb_interpolator[star_type][instrument][band](teff, logg))
+    # if star_type == 'WD' and source == 'Claret':
+    #     T_bb = float(bb_interpolator['WD']['Claret'][band](teff, logg))
+    # elif star_type == 'WD' and source == 'Bergeron':
+    #     T_bb = float(bb_interpolator['WD'][instrument][band](teff, logg))
+    # elif star_type == 'MS' and source == 'BT-SETTL':
+    #     T_bb = float(bb_interpolator['MS']['BT-SETTL'][band](teff, logg))
+    # else:
+    #     T_bb = float(bb_interpolator[star_type][instrument][band](teff, logg))
+
+    T_bb = float(bb_interpolator[star_type][model][instrument][band](teff, logg))
     return T_bb
 
 
@@ -46,6 +48,8 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
         ld_interpolator[star_type_1][band](teff_1, logg_1)
     )
     if star_type_2:
+        if teff_2 < 2300:
+            teff_2 = 2300
         ldcs['ldc2_1'], ldcs['ldc2_2'], ldcs['ldc2_3'], ldcs['ldc2_4'] = (
             ld_interpolator[star_type_2][band](teff_2, logg_2)
         )
@@ -55,7 +59,9 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
 def get_gdc(teff, logg, band, beta=None):
     hcam = filters()
     if not beta:
+        if teff < 2000: teff = 2000
         beta = beta_interpolator(np.log10(teff))
+    if teff < 2300: teff = 2300
     if band in hcam.bands:
         return beta * gdark_interpolator[band](teff, logg)[0] + gdark_interpolator[band](teff, logg)[1]
     else:
@@ -120,6 +126,12 @@ def separation(m1, m2, p):
     return a.to_value(u.R_sun)
 
 
+def t2phase(t, t0, P):
+    phase = ((t - t0) / P) % 1
+    phase[phase > 0.5] -=1 
+    return phase
+
+
 def Claret_LD_law(mu, c1, c2, c3, c4):
     """
     Claret 4-parameter limb-darkening law.
@@ -153,15 +165,15 @@ def scalefactor(a, parallax, wavelength=550*u.nm, Ebv=0):
     return sf
 
 
-def integrate_disk(teff, logg, radius, parallax, Ebv, band, wd_model='Claret'):
-    if wd_model != 'Claret':
-        cam = filters(wd_model)
-    else:
-        cam = filters()
+def integrate_disk(teff, logg, radius, parallax, Ebv, band, wd_model='Claret', instrument='ucam'):
+    # if wd_model != 'Claret':
+    #     cam = filters(wd_model)
+    # else:
+    cam = filters(instrument)
 
     ext = F19(Rv=3.1)
     # Central intensity in Janskys from blackbody temperature for model
-    t_bb = float(bb_interpolator['WD'][wd_model][band](teff, logg))
+    t_bb = float(bb_interpolator['WD'][wd_model][instrument][band](teff, logg))
     I_cen = (bb.evaluate(cam.eff_wl[band], t_bb*u.K, scale=1) * u.sr).to_value(u.Jansky)
     # Get limb darkening for model
     c1, c2, c3, c4 = ld_interpolator['WD'][band](teff, logg)
@@ -194,24 +206,21 @@ def Gsin(theta, t1, r1, t2, r2, a):
     """
     F_irr = (sigma_sb.value * r1**2 * t1**4 * h(theta, r2, a)) / a**2
     F_0 = sigma_sb.value * t2**4
-
-    out = np.zeros_like(theta)
-    out[F_irr < F_0] = (1 - ( F_irr[F_irr < F_0] / F_0)) * np.sin(theta[F_irr < F_0])
-    return out
+    if F_irr >= F_0:
+        return 0
+    else:
+        return (1 - ( F_irr / F_0)) * np.sin(theta)
 
 
 def irradiate(t1, r1, t2, r2, a):
     """
-    
+    Calculates inflation due to irradiation according to Ritter (2000)
+    https://ui.adsabs.harvard.edu/abs/2000A%26A...360..969R/abstract.
     """
     theta_max = np.arccos(r2/a)
-    thetas = np.linspace(theta_max, 0, 100)
 
-    # s_eff = 0.5 * (1 - (r2/a) - quad(Gsin, 0, theta_max, args=(t1, r1, t2, r2, a))[0])
-    # calculate s_eff following Eqn.60 from Ritter (2000)
-    # https://ui.adsabs.harvard.edu/abs/2000A%26A...360..969R/abstract
-
-    s_eff = 0.5 * (1 - (r2/a) - simps(Gsin(thetas, t1, r1, t2, r2, a), thetas))
-    # irradiation inflation according to equation 17 from Ritter (2000)
+    # effective surface area following Eqn.60
+    s_eff = 0.5 * (1 - (r2/a) - quad(Gsin, 0, theta_max, args=(t1, r1, t2, r2, a))[0])
+    # inflation according to equation 17 (Ritter 2000)
     r_irr = r2 * (1 - s_eff)**-0.1
     return r_irr

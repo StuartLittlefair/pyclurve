@@ -161,7 +161,6 @@ class Lcurve(OrderedDict):
 
         # write the model to a temporary file
         tfile = self.write()
-
         (fd, fname) = tempfile.mkstemp()
 
         # build the command, run it, read the results.
@@ -188,7 +187,7 @@ class Lcurve(OrderedDict):
         return output, fname
 
 
-    def run_model(self, t1, t2, exptime, fname=None, scale_factor=1, noise=0, npoints=None):
+    def run_model(self, t1, t2, exptime, scale_factor=1, fname=None, noise=0, npoints=None):
         """
         Run lroche to produce a model light curve given parameters.
         If no fname given then a temporary filename will be given.
@@ -256,43 +255,38 @@ class Lcurve(OrderedDict):
         return x, y-ym, e
 
 
-    def get_output(self, output, scale_factor=None):
-        # interpret the output
+    def get_output(self, output):
+        """
+        Interprets output of lroche to get white dwarf contribution.
+        """
         subout = [out for out in output if out.startswith('Weighted')]
-        if not scale_factor:
-            if len(subout) == 1:
-                eq = subout[0].find('=')
-                comma = subout[0].find(',')
-                chisq = float(subout[0][eq+2:comma])
-                wnok = float(subout[0][subout[0].find('wnok =')+6:].strip())
-                subout = [out for out in output if out.startswith('White dwarf')]
-                if len(subout) == 1:
-                    eq = subout[0].find('=')
-                    wdwarf = float(subout[0][eq+2:])
-                    
-                else:
-                    print("Can't find white dwarf's contribution. lroche out of date.")
-                    chisq = wnok = wdwarf = None
 
-            else:
-                chisq = wnok = wdwarf = None
-                print('Output from lroche failure')
-            return chisq, wnok, wdwarf
-
-        else:
+        if len(subout) == 1:
+            eq = subout[0].find('=')
+            comma = subout[0].find(',')
+            chisq = float(subout[0][eq+2:comma])
+            wnok = float(subout[0][subout[0].find('wnok =')+6:].strip())
             subout = [out for out in output if out.startswith('White dwarf')]
             if len(subout) == 1:
                 eq = subout[0].find('=')
                 wdwarf = float(subout[0][eq+2:])
-            return wdwarf
+                
+            else:
+                print("Can't find white dwarf's contribution. lroche out of date.")
+                chisq = wnok = wdwarf = None
+
+        else:
+            chisq = wnok = wdwarf = None
+            print('Output from lroche failure')
+        return chisq, wnok, wdwarf
 
 
     def __call__(self, data, scale_factor=None):
         output, fname = self.run(data, scale_factor)
-        t, et, y, ye, _, _ = np.loadtxt(data).T
         _, _, ym, _, _, _ = np.loadtxt(fname).T
         os.remove(fname)
-        return t, y, ye, ym
+        chisq, wnok, wdwarf = self.get_output(output)
+        return ym, wdwarf
 
 
     def chisq(self, data, scale_factor=None):
@@ -311,24 +305,7 @@ class Lcurve(OrderedDict):
         os.remove(fname)
 
         # interpret the output
-        subout = [out for out in output if out.startswith('Weighted')]
-
-        if len(subout) == 1:
-            eq = subout[0].find('=')
-            comma = subout[0].find(',')
-            chisq = float(subout[0][eq+2:comma])
-            wnok = float(subout[0][subout[0].find('wnok =')+6:].strip())
-            subout = [out for out in output if out.startswith('White dwarf')]
-            if len(subout) == 1:
-                eq = subout[0].find('=')
-                wdwarf = float(subout[0][eq+2:])
-            else:
-                print("Can't find white dwarf's contribution. lroche out of date.")
-                chisq = wnok = wdwarf = None
-
-        else:
-            chisq = wnok = wdwarf = None
-            print('Output from lroche failure')
+        chisq, wnok, wdwarf = self.get_output(output)
 
         return chisq, wnok, wdwarf
 
