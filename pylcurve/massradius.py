@@ -9,16 +9,19 @@ ms_interpolator = dict()
 
 fpath = resource_filename('pylcurve', 'data/cooling_tracks/')
 
-# he = ascii.read(fpath + 'He_tracks_thick.dat')
-he = ascii.read(fpath + 'He_tracks.dat')
+he = ascii.read(fpath + 'He_tracks_thick.dat')
+# he = ascii.read(fpath + 'He_tracks.dat')
 co = ascii.read(fpath + 'CO_tracks.dat')
 one = ascii.read(fpath + 'ONe_tracks.dat')
 mass, radius = np.loadtxt(fpath + 'MdwarfMRrel.dat', unpack=True)
 std_mass, std_radius = np.loadtxt(fpath + 'Mdwarf_stds.dat', unpack=True)
 baraffe = ascii.read(fpath + 'Baraffe/baraffe.dat')
 
-he_coords_in = list(zip(he['M'], he['Teff']))
-he_coords_out = list(he['R'])
+# he_coords_in = list(zip(he['M'], he['Teff']))
+# he_coords_out = list(he['R'])
+
+he_coords_in = list(zip(he['Mass'], he['Teff']))
+he_coords_out = list(he['Radius'])
 
 co_coords_in = list(zip(co['M'], co['Teff']))
 co_coords_out = list(co['R'])
