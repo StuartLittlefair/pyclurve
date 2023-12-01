@@ -149,7 +149,7 @@ def separation(m1, m2, P):
 
 def rv_semiamplitudes(m1, m2, P, i):
     """
-    Calculation binary separation
+    Calculates radial velocity semiamplitudes.
     Parameters
     -----------
     m1 : float
@@ -167,11 +167,12 @@ def rv_semiamplitudes(m1, m2, P, i):
     k2 : float
         radial velocity semiamplitude of star 2 in km/s
     """
+    m = np.array([m2, m1]) * u.M_sun
     m1 = m1*u.M_sun
     m2 = m2*u.M_sun
     P = P*u.d
     const = (2 * np.pi * G * np.sin(i*u.deg)**3) / (P * (m1 + m2)**2)
-    k1, k2 = ((const * m2**3)**(1/3)).to_value(u.km/u.s), ((const * m1**3)**(1/3)).to_value(u.km/u.s)
+    k1, k2 = ((const * m**3)**(1/3)).to_value(u.km/u.s)
     return k1, k2
 
 
