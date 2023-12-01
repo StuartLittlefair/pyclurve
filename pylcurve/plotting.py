@@ -245,7 +245,7 @@ def plot_SED(model, params, show=True, save=False, name='SED.pdf'):
     if show:
         plt.show()
     plt.close()
-        if save:
+    if save:
         t = Table()
         t['wavelength'], t['wdflux'], t['wdflux_e'], t['wdmodel'] = wavelength, wd_real, wd_err, wd_model
         t.write(f"MCMC_runs/{model.config['run_name']}/{model.config['run_name']}_SED.dat", format='ascii', overwrite=True)
