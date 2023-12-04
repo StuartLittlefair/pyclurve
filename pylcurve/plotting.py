@@ -1,19 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-import corner as triangle
 import matplotlib as mpl
+import corner as triangle
 from astropy.table import Table
+import shutil
 from pkg_resources import resource_filename
 from .utils import t2phase
 
-fpath = resource_filename('pylcurve', 'data/cooling_tracks/')
+usetex = True if shutil.which('latex') else False
 
+fpath = resource_filename('pylcurve', 'data/cooling_tracks/')
 mass_lim, teff_lim = np.loadtxt(fpath + "He_thick_lim.dat", unpack=True)
 
 def plot_LC(model, params, show=True, save=False, name='LC.pdf', dataname=None):
-
-    mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['text.usetex'] = usetex
     mpl.rcParams['pdf.fonttype'] = 42
     mpl.rcParams['ps.fonttype'] = 42
     mpl.rcParams['mathtext.fontset'] = 'stix'
@@ -109,7 +110,7 @@ def plot_LC(model, params, show=True, save=False, name='LC.pdf', dataname=None):
 
 def plot_LC_GP(model, params, show=True, save=False, name='LC.pdf', dataname=None):
 
-    mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['text.usetex'] = usetex
     mpl.rcParams['pdf.fonttype'] = 42
     mpl.rcParams['ps.fonttype'] = 42
     mpl.rcParams['mathtext.fontset'] = 'stix'
@@ -280,7 +281,7 @@ def plot_CP(fchain, namelist, composition='CO', name='CP.pdf', **kwargs):
 
 
 def plot_CP_reduced(fchain, namelist, composition='CO', name='CP.pdf', plotted_params = ['t1', 't2_i', 'm1', 'm2', 'incl', 'parallax'], **kwargs):
-    mpl.rcParams['text.usetex'] = True
+    mpl.rcParams['text.usetex'] = usetex
     mpl.rcParams['pdf.fonttype'] =  42
     mpl.rcParams['ps.fonttype'] = 42
     mpl.rcParams['mathtext.fontset'] = 'stix'
