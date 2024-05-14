@@ -1,6 +1,7 @@
 import numpy as np
 import astropy.units as u
 from scipy.integrate import quad, simps
+from scipy.stats import skewnorm
 from astropy.constants import G, sigma_sb, c, h, k_B
 from astropy.modeling.physical_models import BlackBody
 from .filters import filters
@@ -291,3 +292,15 @@ def irradiate(t1, r1, t2, r2, a):
     # inflation according to equation 17 (Ritter 2000)
     r_irr = r2 * (1 - s_eff)**-0.1
     return r_irr
+
+
+def scale_flare(cam, band, temp):
+    amplitude_factor = (bb.evaluate(cam.eff_wl[band], temp*u.K, scale=1)
+                        / bb.evaluate(cam.eff_wl['gs'], temp*u.K, scale=1))
+    return amplitude_factor.value
+
+
+def stellar_flare(cam, band, t, temp, amp, skew, loc, scale):
+    amp *= scale_flare(cam, band, temp)
+    flare = amp * skewnorm.pdf(t, skew, loc=loc, scale=scale)
+    return flare
