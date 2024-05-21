@@ -294,13 +294,36 @@ def irradiate(t1, r1, t2, r2, a):
     return r_irr
 
 
+def fred(t, a1, a2, a3):
+    """"
+    Fast Rise Exponential Decay (FRED) stellar flare modelled with asymmetric
+    double sigmoid (ADS) function. 
+    https://scholarsjunction.msstate.edu/cgi/viewcontent.cgi?article=1254&context=td.
+    """
+    term1 = 1 / (1 + np.exp((-t + a1) / a2))
+    term2 = (1 - (1 / (1 + np.exp((-t + a1) / a3)) ) )
+    return term1 * term2
+
+
 def scale_flare(cam, band, temp):
+    """
+    Scales flare across bands according to a blackbody function.
+    """
     amplitude_factor = (bb.evaluate(cam.eff_wl[band], temp*u.K, scale=1)
                         / bb.evaluate(cam.eff_wl['gs'], temp*u.K, scale=1))
     return amplitude_factor.value
 
 
-def stellar_flare(cam, band, t, temp, amp, skew, loc, scale):
+def stellar_flare_skewnorm(cam, band, t, temp, amp, skew, loc, scale):
+    """
+    Stellar flare modelled with skewed normal distribution.
+    """
     amp *= scale_flare(cam, band, temp)
     flare = amp * skewnorm.pdf(t, skew, loc=loc, scale=scale)
+    return flare
+
+
+def stellar_flare_fred(cam, band, t, temp, amp, loc, rise, fall):
+    amp *= scale_flare(cam, band, temp)
+    flare = amp * fred(t, loc, rise, fall)
     return flare
