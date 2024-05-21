@@ -309,8 +309,13 @@ def scale_flare(cam, band, temp):
     """
     Scales flare across bands according to a blackbody function.
     """
-    amplitude_factor = (bb.evaluate(cam.eff_wl[band], temp*u.K, scale=1)
-                        / bb.evaluate(cam.eff_wl['gs'], temp*u.K, scale=1))
+    # amplitude_factor = (bb.evaluate(cam.eff_wl[band], temp*u.K, scale=1)
+    #                     / bb.evaluate(cam.eff_wl['gs'], temp*u.K, scale=1))
+    wavelengths = np.linspace(3000, 11000, 10000)*u.AA
+    bb_curve = bb.evaluate(wavelengths, temp*u.K, scale=1)*u.sr
+    gs_bb = cam.synphot_ccd(wavelengths, bb_curve, 'gs')
+    filter_bb = cam.synphot_ccd(wavelengths, bb_curve, band)
+    amplitude_factor = filter_bb / gs_bb
     return amplitude_factor.value
 
 
