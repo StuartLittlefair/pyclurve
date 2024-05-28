@@ -1,7 +1,8 @@
 import numpy as np
 import astropy.units as u
 from scipy.integrate import quad, simps
-from astropy.constants import G, sigma_sb
+from scipy.stats import skewnorm
+from astropy.constants import G, sigma_sb, c, h, k_B
 from astropy.modeling.physical_models import BlackBody
 from .filters import filters
 from .blackbody import bb_interpolator
@@ -9,9 +10,31 @@ from .limbdark import ld_interpolator
 from .gravitydark import gdark_interpolator, beta_interpolator
 from .massradius import mr_interpolator
 from .rochedistortion import roche_interpolator
+from trm import roche
 from dust_extinction.parameter_averages import F19
 
 bb = BlackBody()
+ext = F19(Rv=3.1)
+hcam = filters('hcam')
+ucam = filters('ucam')
+ucam_sloan = filters('ucam_sloan')
+sdss = filters('sdss')
+sol = c.value
+h_plnk = h.value
+k_b = k_B.value
+
+filt_dict = dict(
+    hcam=hcam,
+    ucam=ucam,
+    ucam_sloan=ucam_sloan,
+    sdss=sdss
+)
+
+
+def planck(wl, temp):
+    const = ((2 * h_plnk * sol) / (wl * 10 ** -10) ** 3)
+    frac = 1 / (np.exp((h_plnk * sol) / ((wl*10 ** -10) * temp * k_b)) - 1)
+    return const * frac / 10 ** -26
 
 
 def get_Tbb(teff, logg, band, instrument='ucam', star_type='WD', model='Claret'):
@@ -57,7 +80,6 @@ def get_ldcs(teff_1, logg_1, band, star_type_1='WD',
 
 
 def get_gdc(teff, logg, band, beta=None):
-    hcam = filters()
     if not beta:
         if teff < 2000: teff = 2000
         beta = beta_interpolator(np.log10(teff))
@@ -103,9 +125,9 @@ def log_g(m, r):
     return np.log10((G*m/r/r).to_value(u.cm/u.s/u.s))
 
 
-def separation(m1, m2, p):
+def separation(m1, m2, P):
     """
-    Calculation binary separation
+    Calculates binary separation
     Parameters
     -----------
     m1 : float
@@ -120,24 +142,39 @@ def separation(m1, m2, p):
         binary separation in solar radii
     """
     mt = (m1+m2) * u.M_sun
-    p = p * u.d
-    acubed = G * p**2 * mt / 4 / np.pi**2
+    P = P * u.d
+    acubed = G * P**2 * mt / 4 / np.pi**2
     a = acubed ** (1/3)
     return a.to_value(u.R_sun)
 
 
-def t2phase(t, t0, P):
-    phase = ((t - t0) / P) % 1
-    phase[phase > 0.5] -=1 
-    return phase
-
-
-def Claret_LD_law(mu, c1, c2, c3, c4):
+def rv_semiamplitudes(m1, m2, P, i):
     """
-    Claret 4-parameter limb-darkening law.
+    Calculates radial velocity semiamplitudes.
+    Parameters
+    -----------
+    m1 : float
+        mass of star 1 in solar units
+    m2 : float
+        mass of star 2 in solar units
+    P : float
+        period in days
+    i : float
+        inclination in degrees
+    Returns
+    -------
+    k1 : float
+        radial velocity semiamplitude of star 1 in km/s
+    k2 : float
+        radial velocity semiamplitude of star 2 in km/s
     """
-    I = (1 - c1*(1 - mu**0.5) - c2*(1 - mu) - c3*(1 - mu**1.5) - c4*(1 - mu**2)) * mu
-    return I
+    m = np.array([m2, m1]) * u.M_sun
+    m1 = m1*u.M_sun
+    m2 = m2*u.M_sun
+    P = P*u.d
+    const = (2 * np.pi * G * np.sin(i*u.deg)**3) / (P * (m1 + m2)**2)
+    k1, k2 = ((const * m**3)**(1/3)).to_value(u.km/u.s)
+    return k1, k2
 
 
 def m1m2(vel_scale, q, P):
@@ -146,6 +183,35 @@ def m1m2(vel_scale, q, P):
     m1 = ((P * vel_scale**3) / (2 * np.pi * G * (1 + q**-1))).to_value(u.M_sun)
     m2 = ((P * vel_scale**3) / (2 * np.pi * G * (1 + q))).to_value(u.M_sun)
     return m1, m2
+
+
+def t2phase(t, t0, P):
+    phase = ((t - t0) / P) % 1
+    phase[phase > 0.5] -=1 
+    return phase
+
+
+def contact_points(t0, P, q, incl, r1_a, r2_a, ntheta=100):
+    try:
+        c3, c4 = roche.wdphases(q, incl, r1_a, r2_a, ntheta=100)
+    except roche.RocheError:
+        return None, None, None, None
+    t1 = t0 - c4*P
+    t2 = t0 - c3*P
+    t3 = t0 + c3*P
+    t4 = t0 + c4*P
+    if c3 == -1:
+        return t1, None, None, t4
+    else:
+        return t1, t2, t3, t4
+    
+
+def Claret_LD_law(mu, c1, c2, c3, c4):
+    """
+    Claret 4-parameter limb-darkening law.
+    """
+    I = (1 - c1*(1 - mu**0.5) - c2*(1 - mu) - c3*(1 - mu**1.5) - c4*(1 - mu**2)) * mu
+    return I
 
 
 def scalefactor(a, parallax, wavelength=550*u.nm, Ebv=0):
@@ -169,12 +235,14 @@ def integrate_disk(teff, logg, radius, parallax, Ebv, band, wd_model='Claret', i
     # if wd_model != 'Claret':
     #     cam = filters(wd_model)
     # else:
-    cam = filters(instrument)
+    # cam = filters(instrument)
+    cam = filt_dict[instrument]
 
-    ext = F19(Rv=3.1)
+    # ext = F19(Rv=3.1)
     # Central intensity in Janskys from blackbody temperature for model
     t_bb = float(bb_interpolator['WD'][wd_model][instrument][band](teff, logg))
-    I_cen = (bb.evaluate(cam.eff_wl[band], t_bb*u.K, scale=1) * u.sr).to_value(u.Jansky)
+    # I_cen = (bb.evaluate(cam.eff_wl[band], t_bb*u.K, scale=1) * u.sr).to_value(u.Jansky)
+    I_cen = planck(cam.eff_wl[band].value, t_bb)
     # Get limb darkening for model
     c1, c2, c3, c4 = ld_interpolator['WD'][band](teff, logg)
     # Integrate total flux of disk from central intensity and limb-darkening law
@@ -224,3 +292,43 @@ def irradiate(t1, r1, t2, r2, a):
     # inflation according to equation 17 (Ritter 2000)
     r_irr = r2 * (1 - s_eff)**-0.1
     return r_irr
+
+
+def fred(t, a1, a2, a3):
+    """"
+    Fast Rise Exponential Decay (FRED) stellar flare modelled with asymmetric
+    double sigmoid (ADS) function. 
+    https://scholarsjunction.msstate.edu/cgi/viewcontent.cgi?article=1254&context=td.
+    """
+    term1 = 1 / (1 + np.exp((-t + a1) / a2))
+    term2 = (1 - (1 / (1 + np.exp((-t + a1) / a3)) ) )
+    return term1 * term2
+
+
+def scale_flare(cam, band, temp):
+    """
+    Scales flare across bands according to a blackbody function.
+    """
+    # amplitude_factor = (bb.evaluate(cam.eff_wl[band], temp*u.K, scale=1)
+    #                     / bb.evaluate(cam.eff_wl['gs'], temp*u.K, scale=1))
+    wavelengths = np.linspace(3000, 11000, 10000)*u.AA
+    bb_curve = bb.evaluate(wavelengths, temp*u.K, scale=1)*u.sr
+    gs_bb = cam.synphot_ccd(wavelengths, bb_curve, 'gs')
+    filter_bb = cam.synphot_ccd(wavelengths, bb_curve, band)
+    amplitude_factor = filter_bb / gs_bb
+    return amplitude_factor.value
+
+
+def stellar_flare_skewnorm(cam, band, t, temp, amp, skew, loc, scale):
+    """
+    Stellar flare modelled with skewed normal distribution.
+    """
+    amp *= scale_flare(cam, band, temp)
+    flare = amp * skewnorm.pdf(t, skew, loc=loc, scale=scale)
+    return flare
+
+
+def stellar_flare_fred(cam, band, t, temp, amp, loc, rise, fall):
+    amp *= scale_flare(cam, band, temp)
+    flare = amp * fred(t, loc, rise, fall)
+    return flare
