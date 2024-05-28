@@ -18,7 +18,7 @@ import pylcurve.plotting as p
 
 """
 This script fits flux calibrated, multi-band primary eclipse photometry of
-WD-WD/WD-dM binaries using an MCMC method to run Tom Marsh's LROCHE routine.
+WD+M/WD+WD binaries using an MCMC method to run Tom Marsh's LROCHE routine.
 Using mass-radius relations it can determine stellar masses and effective
 temperatures for both components.
 """
@@ -99,6 +99,22 @@ class EclipseLC(Model):
             return self.t2_z
     
 
+    def t2eff_free(self, band):
+        if band == 'us' or band == 'u':
+            t2_band = self.t2_u
+        if band == 'gs' or band == 'g':
+            t2_band = self.t2_g
+        if band == 'rs' or band == 'r':
+            t2_band = self.t2_r
+        if band == 'is' or band == 'i':
+            t2_band = self.t2_i
+        if band == 'zs' or band == 'z':
+            t2_band = self.t2_z
+        return utils.get_Tbb(t2_band, self.log_g2, band, star_type='MS',
+                             model=self.config['ms_model'],
+                             instrument=self.config['filter_system'])
+
+
     def slope(self, band):
         if band == 'us' or band == 'u':
             return 0.0
@@ -138,8 +154,10 @@ class EclipseLC(Model):
         self.a = utils.separation(self.m1, self.m2, self.config['period'])
 
         if self.config['free_t2'] == True:
-            self.t2 = self.t2_free(band)
-            t2 = self.t2_g
+            # self.t2 = self.t2_free(band)
+            # t2 = self.t2_g
+            self.t2 = self.t2eff_free(band)
+            t2 = self.t2_i
         else:
             t2 = self.t2
 
@@ -163,7 +181,8 @@ class EclipseLC(Model):
         lcurve_pars['tperiod'] = self.config['period']
         lcurve_pars['iangle'] = self.incl
         lcurve_pars['q'] = q
-        # lcurve_pars['slope'] = self.slope(band)
+        if hasattr(self, 'slope_i'):
+            lcurve_pars['slope'] = self.slope(band)
         self.vary_model_res(lcurve_pars)
         if not self.config['fit_beta']:
             lcurve_pars['gravity_dark2'] = utils.get_gdc(t2, self.log_g2, band)
@@ -218,7 +237,6 @@ class EclipseLC(Model):
                                              self.config['wd_model'],
                                              self.config['filter_system'])
         ym, wdwarf = self.lcurve_model(self.lightcurves[band])
-
         return ym, wdwarf, wd_model_flux
 
 
@@ -237,6 +255,13 @@ class EclipseLC(Model):
             var = list(self.parameter_names)[idx]
             prior = m.Prior(*self.config['priors'][var])
             val += prior.ln_prob(self.parameter_vector[idx])
+        if self.config['free_t2']:
+            prior_ui = m.Prior('gauss', 0, 80)
+            prior_gi = m.Prior('gauss', 0, 30)
+            val+= prior_ui.ln_prob(self.parameter_vector[self.parameter_names.index('t2_u')]
+                                   - self.parameter_vector[self.parameter_names.index('t2_i')])
+            val+= prior_gi.ln_prob(self.parameter_vector[self.parameter_names.index('t2_g')]
+                                   - self.parameter_vector[self.parameter_names.index('t2_i')])
         return val
 
     
@@ -276,7 +301,6 @@ class EclipseLC(Model):
                 # invalid lcurve params
                 print('warning: model failed ', err)
                 return np.inf
-            # chisq = np.sum(w * ((y - ym)**2 / ye**2))
             return chisq
 
 
@@ -315,6 +339,8 @@ if __name__ == "__main__":
         if not os.path.isdir(folder):
             os.makedirs(folder)
 
+
+#TODO:
     conf_file = 'example.yaml'
 
 
@@ -398,6 +424,10 @@ if __name__ == "__main__":
         return -inf_to_small(log_probability(x))
 
 
+    def min_func_ls(x):
+        return np.sqrt(-2 * inf_to_small(log_probability(x)))
+
+
     def fit_start_pos(x0, *args, **kwargs):
         bounds = [tuple(value) for value in config['param_bounds'].values()]
         print("Fitting start position...")
@@ -414,7 +444,7 @@ if __name__ == "__main__":
     
     def write_models(params, fname):
         model.set_parameter_vector(params)
-        for band in light_curves.keys():
+        for band in model.cam.bands:
             fname_out = f"{fname}_{band}.mod"
             model.write_model(band, fname_out)
 
@@ -445,7 +475,8 @@ if __name__ == "__main__":
 
         # make plots
         p.plot_traces(chain, par_names, name=f"MCMC_runs/{run_name}/Trace_{run_name}.pdf")
-        p.plot_CP(fchain, par_names, name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
+        p.plot_CP(fchain, par_names, composition=config['wd_core_comp'],
+                  name=f"MCMC_runs/{run_name}/CP_{run_name}.pdf")
         p.plot_LC(model, Pars[:-1], show=show, save=True,
                   name=f"MCMC_runs/{run_name}/LC_{run_name}.pdf",
                   dataname=f"MCMC_runs/{run_name}/model_{run_name}")
@@ -470,7 +501,8 @@ if __name__ == "__main__":
 
         # fit for start position close to best log_prob
         if not os.path.exists(chain_file):
-            params = fit_start_pos(np.array(params), tol=1)
+            # params = fit_start_pos(np.array(params), tol=1)
+            # params = fit_start_pos_ls(np.array(params))
             # amount to scatter initial ball of walkers
             scatter = 0.001*np.ones_like(params)
             # small scatter for t0
@@ -482,7 +514,8 @@ if __name__ == "__main__":
             nsteps = chain.shape[0]
             nwalkers_chain = chain.shape[1]
             if args.nwalkers != nwalkers_chain:
-                raise ValueError(f"Walker number mismatch. Existing chain file has {nwalkers_chain} walkers but {args.nwalkers} walkers were requested.")
+                raise ValueError(f"Walker number mismatch. Existing chain file has {nwalkers_chain} walkers"
+                                 f" but {args.nwalkers} walkers were requested.")
             args.nprod -= nsteps
             p0 = chain[-1, :, :-1]
 
@@ -509,4 +542,4 @@ if __name__ == "__main__":
 
     else:
         chain_file = 'MCMC_runs/{}/{}'.format(run_name, chain_fname)
-        mcmc_results(chain_file, nameList, run_name, burn_in=0, measure='median', show=True)
+        mcmc_results(chain_file, nameList, run_name, burn_in=0, clip=100, measure='median', show=True)

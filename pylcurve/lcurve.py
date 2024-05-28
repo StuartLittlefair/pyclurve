@@ -283,10 +283,10 @@ class Lcurve(OrderedDict):
 
     def __call__(self, data, scale_factor=None):
         output, fname = self.run(data, scale_factor)
-        _, _, ym, _, _, _ = np.loadtxt(fname).T
+        t, _, ym, _, _, _ = np.loadtxt(fname).T
         os.remove(fname)
         chisq, wnok, wdwarf = self.get_output(output)
-        return ym, wdwarf
+        return t, ym, wdwarf
 
 
     def chisq(self, data, scale_factor=None):
